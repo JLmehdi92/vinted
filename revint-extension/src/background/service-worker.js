@@ -156,8 +156,19 @@ async function handleMessage(msg) {
     }
 
     case 'revint:getItems': {
-      const st = getState();
-      if (!st.userId) throw new Error('NOT_CONNECTED');
+      let st = getState();
+      if (!st.userId) {
+        // Try to connect first — the widget/popup may have opened before
+        // the user navigated on Vinted, so userId was never set.
+        try {
+          const user = await ensureConnectedUser();
+          await persistUser(user);
+          st = getState();
+        } catch {
+          // Still no user — return empty list instead of crashing.
+          return { items: [], pagination: null };
+        }
+      }
       return getUserItems(st.userId, msg.page || 1, msg.perPage || 96);
     }
 

@@ -498,8 +498,15 @@ export async function repostItem(itemId, onProgress) {
 export { withKeyMutex };
 
 // ─── Notifications / Messaging ───────────────────────
+// Vinted may return 404 (HTML page) on notifications for accounts with no
+// activity. Treat that as "no notifications" rather than crashing.
 export async function getNotifications(page = 1) {
-  return api('GET', `/api/v2/notifications?page=${page}&per_page=20`);
+  try {
+    return await api('GET', `/api/v2/notifications?page=${page}&per_page=20`);
+  } catch (e) {
+    if (/VINTED_API_404/.test(e.message)) return { notifications: [] };
+    throw e;
+  }
 }
 
 export async function sendMessage(conversationId, body) {
