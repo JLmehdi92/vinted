@@ -551,10 +551,14 @@ async function processAutoReplyTick() {
   let notifications;
   try {
     const res = await getNotifications(1);
-    notifications = res.notifications || [];
+    notifications = res?.notifications || [];
   } catch (e) {
-    recordBackgroundError('auto-reply-notifications', e);
-    // DataDome / rate-limit: suspend the current tick; next alarm will retry.
+    // Only record as background error if it's NOT a 404 (empty account) or
+    // NOT_AUTHENTICATED (stale session). These are expected for new accounts
+    // and would just spam the user with false alarms.
+    if (!/VINTED_API_404|NOT_AUTHENTICATED/.test(e.message)) {
+      recordBackgroundError('auto-reply-notifications', e);
+    }
     return;
   }
 
@@ -757,6 +761,11 @@ function ensurePeriodicAlarms() {
   }
 }
 
-chrome.runtime.onInstalled.addListener(ensurePeriodicAlarms);
+chrome.runtime.onInstalled.addListener(() => {
+  ensurePeriodicAlarms();
+  // Clear stale errors from previous sessions so users don't see
+  // outdated notifications after an extension update or reinstall.
+  chrome.storage.local.remove('revint_last_error');
+});
 // Re-create alarms on service worker startup — MV3 is allowed to drop them.
 ensurePeriodicAlarms();
