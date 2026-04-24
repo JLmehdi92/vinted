@@ -98,25 +98,50 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
   // Resolve selected articles for thumbnail strip
   const selectedArticles = (articles || []).filter((a) => ids.includes(a.id)).slice(0, count);
 
-  // Listen for repost progress from chrome.storage
+  // Restore in-flight batch state when the popup is re-opened mid-run.
+  // The listener is always attached so late updates still land even if we
+  // haven't called handleLaunch in this popup instance.
   useEffect(() => {
-    if (!running) return;
+    chrome.storage.local.get(['revint_repost_batch', 'revint_repost_progress']).then((res) => {
+      if (res.revint_repost_batch?.status === 'running') {
+        setRunning(true);
+      }
+      if (res.revint_repost_progress) {
+        setProgress(res.revint_repost_progress);
+      }
+    }).catch(() => {});
 
     const listener = (changes) => {
       if (changes.revint_repost_progress) {
         const p = changes.revint_repost_progress.newValue;
         setProgress(p);
-        if (p?.status === 'complete') {
-          setRunning(false);
-        }
+        if (p?.status === 'complete') setRunning(false);
+      }
+      if (changes.revint_repost_batch) {
+        const b = changes.revint_repost_batch.newValue;
+        if (b?.status === 'running') setRunning(true);
+        if (b?.status === 'complete') setRunning(false);
       }
     };
-
     chrome.storage.onChanged.addListener(listener);
     return () => chrome.storage.onChanged.removeListener(listener);
-  }, [running]);
+  }, []);
 
-  const handleLaunch = () => {
+  const scheduleAt = async (when) => {
+    const res = await chrome.runtime.sendMessage({
+      type: 'revint:scheduleRepost',
+      itemIds: ids,
+      when,
+      delayMin: delay ? 5 : 0,
+      delayMax: delay ? 15 : 0,
+    });
+    if (res?.error || !res?.scheduled) {
+      throw new Error(res?.error || 'Planification impossible.');
+    }
+    setProgress({ total: count, done: 0, status: 'scheduled', when });
+  };
+
+  const handleLaunch = async () => {
     if (count === 0) return;
     setSchedError(null);
     if (mode === 'sched') {
@@ -124,54 +149,46 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
         setSchedError('Veuillez choisir une date pour la planification.');
         return;
       }
-      // Schedule via chrome.alarms
       const when = new Date(`${schedDate}T${schedTime}`).getTime();
       if (isNaN(when) || when <= Date.now()) {
         setSchedError('La date doit être dans le futur.');
         return;
       }
-      chrome.runtime.sendMessage({
-        type: 'revint:scheduleRepost',
-        itemIds: ids,
-        when,
-        delayMin: delay ? 5 : 0,
-        delayMax: delay ? 15 : 0,
-      });
-      // Show confirmation
-      setProgress({ total: count, done: 0, status: 'scheduled', when });
+      try { await scheduleAt(when); } catch (e) { setSchedError(e.message); }
       return;
     }
     if (mode === 'smart') {
-      chrome.runtime.sendMessage({ type: 'revint:getSnapshots' })
-        .then(res => {
-          const raw = res?.snapshots || {};
-          const info = computeBestHourFromSnapshots(raw);
-          const bestHour = info ? info.hourStart : 20; // fallback to 20h if not enough data
-          const now = new Date();
-          const target = new Date();
-          target.setHours(bestHour, 0, 0, 0);
-          if (target <= now) target.setDate(target.getDate() + 1);
-
-          chrome.runtime.sendMessage({
-            type: 'revint:scheduleRepost',
-            itemIds: ids,
-            when: target.getTime(),
-            delayMin: delay ? 5 : 0,
-            delayMax: delay ? 15 : 0,
-          });
-          setProgress({ total: count, done: 0, status: 'scheduled', when: target.getTime() });
-        });
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'revint:getSnapshots' });
+        const raw = res?.snapshots || {};
+        const info = computeBestHourFromSnapshots(raw);
+        const bestHour = info ? info.hourStart : 20;
+        const now = new Date();
+        const target = new Date();
+        target.setHours(bestHour, 0, 0, 0);
+        if (target <= now) target.setDate(target.getDate() + 1);
+        await scheduleAt(target.getTime());
+      } catch (e) {
+        setSchedError(e.message);
+      }
       return;
     }
-    // Mode "now" — existing code
+    // Mode "now" — dispatch batch and surface any launch error to the user.
     setRunning(true);
     setProgress({ total: count, done: 0, status: 'running' });
-    chrome.runtime.sendMessage({
-      type: 'revint:repostBatch',
-      itemIds: ids,
-      delayMin: delay ? 5 : 0,
-      delayMax: delay ? 15 : 0,
-    }).catch(() => setRunning(false));
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'revint:repostBatch',
+        itemIds: ids,
+        delayMin: delay ? 5 : 0,
+        delayMax: delay ? 15 : 0,
+      });
+      if (res?.error) throw new Error(res.error);
+    } catch (e) {
+      setRunning(false);
+      setProgress(null);
+      setSchedError(`Impossible de lancer le repost : ${e.message}`);
+    }
   };
 
   const isComplete = progress?.status === 'complete';

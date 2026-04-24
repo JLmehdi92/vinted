@@ -3,10 +3,9 @@ import useStats from '../hooks/useStats';
 import { IconEye, IconHeart } from '../components/Icons';
 
 export default function Stats({ articles }) {
-  const { totalViews, totalFavs, topArticles, viewData, deltaPercent } = useStats(articles);
+  const { totalViews, totalFavs, topArticles, viewData, deltaPercent, isEstimate } = useStats(articles);
 
-  const hasData = articles && articles.length > 0;
-  const data = viewData && viewData.some((v) => v > 0) ? viewData : new Array(14).fill(0);
+  const data = viewData && viewData.length > 0 ? viewData : new Array(14).fill(0);
   const max = Math.max(...data, 1);
 
   const displayViews = totalViews;
@@ -91,24 +90,33 @@ export default function Stats({ articles }) {
         </div>
 
         {/* SVG bar chart */}
-        <svg viewBox="0 0 300 80" style={{ width: '100%', height: 80, display: 'block' }}>
-          {data.map((v, i) => {
-            const h = (v / max) * 60;
-            const x = i * (300 / data.length);
-            const w = 300 / data.length - 2;
-            return (
-              <rect
-                key={i}
-                x={x}
-                y={70 - h}
-                width={w}
-                height={h}
-                style={{ fill: i === data.length - 1 ? 'var(--gold)' : 'var(--ext-fg)' }}
-              />
-            );
-          })}
-          <line x1="0" y1="70" x2="300" y2="70" style={{ stroke: 'var(--ext-line)' }} />
-        </svg>
+        {isEstimate ? (
+          <div style={{
+            padding: '20px 8px', textAlign: 'center', fontFamily: 'var(--mono)',
+            fontSize: 10, color: 'var(--ink-4)', letterSpacing: '0.08em',
+          }}>
+            Accumulez 2+ jours de snapshots pour voir la courbe de vues.
+          </div>
+        ) : (
+          <svg viewBox="0 0 300 80" style={{ width: '100%', height: 80, display: 'block' }}>
+            {data.map((v, i) => {
+              const h = (v / max) * 60;
+              const x = i * (300 / data.length);
+              const w = 300 / data.length - 2;
+              return (
+                <rect
+                  key={i}
+                  x={x}
+                  y={70 - h}
+                  width={w}
+                  height={h}
+                  style={{ fill: i === data.length - 1 ? 'var(--gold)' : 'var(--ext-fg)' }}
+                />
+              );
+            })}
+            <line x1="0" y1="70" x2="300" y2="70" style={{ stroke: 'var(--ext-line)' }} />
+          </svg>
+        )}
       </div>
 
       {/* Top articles */}

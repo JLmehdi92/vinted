@@ -5,21 +5,29 @@ export default function useVinted() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [stale, setStale] = useState(false);
 
-  // Silent background refresh — updates cached user data without blocking UI
+  // Silent background refresh — updates cached user data without blocking UI.
+  // On failure we keep showing cached data but flip a `stale` flag so the UI
+  // can surface a hint that the session may need attention.
   const silentRefresh = useCallback(async () => {
     try {
       const state = await chrome.runtime.sendMessage({ type: 'revint:getState' });
-      if (state.csrf && state.origin) {
+      if (state?.csrf && state?.origin) {
         const result = await chrome.runtime.sendMessage({ type: 'revint:connect' });
-        if (result.connected) {
+        if (result?.connected) {
           setUser(result.user);
           setConnected(true);
+          setStale(false);
+        } else {
+          setStale(true);
         }
-        // Don't disconnect if background refresh fails — keep cached data
+      } else {
+        setStale(true);
       }
-    } catch {
-      // Silently fail — cached data remains valid
+    } catch (e) {
+      console.warn('[useVinted] silent refresh failed, keeping cached data:', e);
+      setStale(true);
     }
   }, []);
 
@@ -74,5 +82,5 @@ export default function useVinted() {
     connect();
   }, [connect]);
 
-  return { connected, user, loading, error, reconnect: connect };
+  return { connected, user, loading, error, stale, reconnect: connect };
 }

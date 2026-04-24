@@ -4,7 +4,9 @@ let state = { csrf: null, anonId: null, origin: null, userId: null };
 
 export function setState(patch) {
   Object.assign(state, patch);
-  chrome.storage.session.set({ vintedState: state });
+  chrome.storage.session.set({ vintedState: state }).catch(e => {
+    console.warn('[ReVint] setState storage error:', e);
+  });
 }
 
 export function getState() {
@@ -16,8 +18,31 @@ export async function restoreState() {
   if (data.vintedState) Object.assign(state, data.vintedState);
 }
 
-// Fetch a fresh CSRF token by loading Vinted pages
-// Tries multiple pages as fallback since some may redirect or require auth
+// Extract a token (CSRF_TOKEN / ANON_ID / ...) from raw Vinted HTML.
+// Vinted uses Next.js SSR and embeds config inside __NEXT_DATA__ as a
+// stringified JSON inside another JSON string. Quotes appear in three
+// forms depending on the layer: ", \\", and \". We unescape in
+// that specific order — reversing steps 2 and 3 would collapse \\" to "
+// before the inner layer is resolved and corrupt the payload.
+export function extractToken(html, key) {
+  if (!html) return null;
+  const cleaned = html
+    .replace(/\\u0022/g, '"')
+    .replace(/\\\\"/g, '"')
+    .replace(/\\"/g, '"');
+  const re = new RegExp(`"${key}"\\s*:\\s*"([^"]+)"`);
+  const m = cleaned.match(re);
+  if (m) return m[1];
+  // Fallback: locate the key near a UUID even if JSON structure shifted.
+  const uuid = html.match(new RegExp(`${key}[^a-f0-9-]*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})`, 'i'));
+  if (uuid) return uuid[1];
+  return null;
+}
+
+// Fetch a fresh CSRF token by loading Vinted pages.
+// Returns { ok: true, csrf, anonId } on success or { ok: false, reason, detail }
+// on failure. Callers get to distinguish network errors from DataDome challenges
+// from "token just isn't in the HTML" — all of which used to be swallowed.
 export async function refreshCsrf(origin) {
   const targetOrigin = origin || state.origin || 'https://www.vinted.fr';
   const pagesToTry = [
@@ -27,82 +52,64 @@ export async function refreshCsrf(origin) {
     `${targetOrigin}/member/general/all`,
   ];
 
+  const attempts = [];
   for (const url of pagesToTry) {
     try {
       const res = await fetch(url, {
         credentials: 'include',
         headers: { 'accept': 'text/html' },
       });
-      if (!res.ok) continue;
+      if (!res.ok) { attempts.push({ url, reason: 'http', status: res.status }); continue; }
       const html = await res.text();
 
-      // Extract CSRF token from the HTML
-      // Vinted uses Next.js SSR — tokens are in JSON-escaped strings
-      // Strategy: unescape first, then use simple regex (like competitors do)
-      let csrf = null;
-      let anonId = null;
-
-      // Unescape the HTML (handles Next.js double-escaping)
-      const cleaned = html
-        .replace(/\\u0022/g, '"')
-        .replace(/\\\\"/g, '"')
-        .replace(/\\"/g, '"');
-
-      // Pattern 1: Standard JSON after unescaping
-      const csrfMatch = cleaned.match(/"CSRF_TOKEN"\s*:\s*"([^"]+)"/);
-      if (csrfMatch) csrf = csrfMatch[1];
-
-      // Pattern 2: Direct UUID search after CSRF_TOKEN (fallback)
-      if (!csrf) {
-        const uuidMatch = html.match(/CSRF_TOKEN[^a-f0-9-]*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-        if (uuidMatch) csrf = uuidMatch[1];
+      // Guard against DataDome CAPTCHA pages which contain random UUIDs
+      // that our UUID fallback regex would otherwise match.
+      if (html.includes('datadome') || html.includes('captcha-delivery')) {
+        return { ok: false, reason: 'datadome', detail: url };
       }
 
-      // Pattern 3: meta tag
-      if (!csrf) {
-        const metaMatch = html.match(/<meta\s+name="csrf-token"\s+content="([^"]+)"/);
-        if (metaMatch) csrf = metaMatch[1];
-      }
-
-      // ANON_ID with same strategy
-      const anonMatch = cleaned.match(/"ANON_ID"\s*:\s*"([^"]+)"/);
-      if (anonMatch) anonId = anonMatch[1];
-      if (!anonId) {
-        const anonUuid = html.match(/ANON_ID[^a-f0-9-]*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-        if (anonUuid) anonId = anonUuid[1];
-      }
+      const csrf = extractToken(html, 'CSRF_TOKEN')
+        || (html.match(/<meta\s+name="csrf-token"\s+content="([^"]+)"/) || [])[1]
+        || null;
+      const anonId = extractToken(html, 'ANON_ID');
 
       if (csrf) {
         setState({ csrf, anonId: anonId || state.anonId, origin: targetOrigin });
-        return true;
+        return { ok: true, csrf, anonId };
       }
-    } catch {
-      continue;
+      attempts.push({ url, reason: 'no-token' });
+    } catch (e) {
+      attempts.push({ url, reason: 'network', detail: e.message });
     }
   }
 
-  // Last resort: try to get CSRF from cookies
+  // Last resort: pull CSRF from cookies if the cookies permission is available.
   try {
     if (chrome.cookies) {
       const cookie = await chrome.cookies.get({ url: targetOrigin, name: 'csrf_token' });
       if (cookie?.value) {
         setState({ csrf: cookie.value, origin: targetOrigin });
-        return true;
+        return { ok: true, csrf: cookie.value };
       }
     }
-  } catch { /* cookies API may not be available */ }
+  } catch (e) {
+    attempts.push({ url: 'cookies', reason: 'network', detail: e.message });
+  }
 
-  return false;
+  console.warn('[ReVint] refreshCsrf exhausted all pages', attempts);
+  return { ok: false, reason: 'not-found', attempts };
 }
 
 function headers(extra = {}) {
-  return {
+  const h = {
     accept: 'application/json, text/plain, */*',
     'x-csrf-token': state.csrf,
-    'x-anon-id': state.anonId || '',
     'x-enable-multiple-size-groups': 'true',
     ...extra,
   };
+  // Omit x-anon-id when absent; empty-string headers confuse some Vinted edges.
+  if (state.anonId) h['x-anon-id'] = state.anonId;
+  return h;
 }
 
 async function api(method, path, body = null, retries = 1) {
@@ -116,18 +123,19 @@ async function api(method, path, body = null, retries = 1) {
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
 
-  // Handle rate limiting — respect Retry-After header
+  // Rate limit: long Retry-After (>30s) would block the SW past its lifecycle.
+  // Cap our in-flight retry and let the caller reschedule via alarms.
   if (res.status === 429) {
     const retryAfter = parseInt(res.headers.get('Retry-After') || '60', 10);
-    if (retries > 0) {
+    if (retries > 0 && retryAfter <= 30) {
       console.warn(`[ReVint] Rate limited, waiting ${retryAfter}s...`);
       await delay(retryAfter * 1000);
       return api(method, path, body, retries - 1);
     }
-    throw new Error('RATE_LIMITED');
+    throw new Error(`RATE_LIMITED: retry-after ${retryAfter}s`);
   }
 
-  // Handle DataDome challenge (403 with captcha)
+  // DataDome challenge (403 with captcha)
   if (res.status === 403) {
     const text = await res.text().catch(() => '');
     if (text.includes('datadome') || text.includes('captcha-delivery')) {
@@ -144,13 +152,15 @@ async function api(method, path, body = null, retries = 1) {
 }
 
 // ─── User ────────────────────────────────────────────
+// Prefer /users/current (newer endpoint Vinted started rolling out).
+// Fall back to the legacy /users/me only on 404 — other errors
+// (429, 403/DataDome) should propagate so the caller knows why.
 export async function getCurrentUser() {
-  // Vinted changed /users/me to /users/current in 2026
   let data;
   try {
     data = await api('GET', '/api/v2/users/current');
-  } catch {
-    // Fallback to old endpoint
+  } catch (e) {
+    if (!/VINTED_API_404/.test(e.message)) throw e;
     data = await api('GET', '/api/v2/users/me');
   }
   return data.user;
@@ -161,10 +171,12 @@ export async function getUserItems(userId, page = 1, perPage = 96) {
   return api('GET', `/api/v2/users/${userId}/items?page=${page}&per_page=${perPage}`);
 }
 
+// Same pattern as getCurrentUser: only fall back on 404.
 export async function getItemDetails(itemId) {
   try {
     return await api('GET', `/api/v2/item_upload/items/${itemId}`);
-  } catch {
+  } catch (e) {
+    if (!/VINTED_API_404/.test(e.message)) throw e;
     return api('GET', `/api/v2/items/${itemId}`);
   }
 }
@@ -196,13 +208,15 @@ export async function uploadPhoto(blob, filename = 'photo.jpg') {
   form.append('photo[temp_uuid]', uuid);
   form.append('photo[file]', blob, filename);
 
+  const photoHeaders = {
+    'x-csrf-token': state.csrf,
+    'x-enable-multiple-size-groups': 'true',
+  };
+  if (state.anonId) photoHeaders['x-anon-id'] = state.anonId;
+
   const res = await fetch(`${state.origin}/api/v2/photos`, {
     method: 'POST',
-    headers: {
-      'x-csrf-token': state.csrf,
-      'x-anon-id': state.anonId || '',
-      'x-enable-multiple-size-groups': 'true',
-    },
+    headers: photoHeaders,
     credentials: 'include',
     body: form,
   });
@@ -211,18 +225,20 @@ export async function uploadPhoto(blob, filename = 'photo.jpg') {
 }
 
 // ─── Image transformation (defeat perceptual hashing) ─────
-// Applies subtle but structurally significant modifications:
-// - Random micro-crop (1-3px per side)
-// - Slight brightness/contrast shift
-// - Pixel-level noise injection
-// - Randomized JPEG quality
-// Uses OffscreenCanvas (available in MV3 service workers)
+// Vinted flags reposts whose photos perceptually match recent deletions
+// (pHash/dHash-style matching). A lossless re-upload is detected. We apply
+// small structural changes that shift the hash far enough from the original
+// without visibly degrading the image:
+//   • random micro-crop (1-3px per side)
+//   • brightness shift (±2-5 units on all channels)
+//   • pixel noise on ~8% of pixels (±1 unit)
+//   • randomized JPEG quality (85-95%)
+// Uses OffscreenCanvas which is available in MV3 service workers.
 async function transformImage(blob) {
   try {
     const bitmap = await createImageBitmap(blob);
     const { width, height } = bitmap;
 
-    // Random crop: remove 1-3px from each side
     const cropL = 1 + Math.floor(Math.random() * 3);
     const cropT = 1 + Math.floor(Math.random() * 3);
     const cropR = 1 + Math.floor(Math.random() * 3);
@@ -230,12 +246,14 @@ async function transformImage(blob) {
     const newW = width - cropL - cropR;
     const newH = height - cropT - cropB;
 
+    // Image too small for safe cropping: only add noise on the original size.
     if (newW < 100 || newH < 100) {
-      // Image too small for safe cropping, just add noise
       const canvas = new OffscreenCanvas(width, height);
       const ctx = canvas.getContext('2d');
       ctx.drawImage(bitmap, 0, 0);
-      addPixelNoise(ctx, width, height);
+      const imageData = ctx.getImageData(0, 0, width, height);
+      addPixelNoise(imageData.data, width, height);
+      ctx.putImageData(imageData, 0, 0);
       const outBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.88 + Math.random() * 0.07 });
       bitmap.close();
       return outBlob;
@@ -243,94 +261,141 @@ async function transformImage(blob) {
 
     const canvas = new OffscreenCanvas(newW, newH);
     const ctx = canvas.getContext('2d');
-
-    // Draw cropped region
     ctx.drawImage(bitmap, cropL, cropT, newW, newH, 0, 0, newW, newH);
 
-    // Slight brightness shift (+/- 2-5 units)
     const brightnessShift = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.floor(Math.random() * 4));
     const imageData = ctx.getImageData(0, 0, newW, newH);
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
-      data[i] = Math.min(255, Math.max(0, data[i] + brightnessShift));     // R
-      data[i+1] = Math.min(255, Math.max(0, data[i+1] + brightnessShift)); // G
-      data[i+2] = Math.min(255, Math.max(0, data[i+2] + brightnessShift)); // B
+      data[i]   = Math.min(255, Math.max(0, data[i]   + brightnessShift));
+      data[i+1] = Math.min(255, Math.max(0, data[i+1] + brightnessShift));
+      data[i+2] = Math.min(255, Math.max(0, data[i+2] + brightnessShift));
     }
-
-    // Inject random pixel noise (1-2 units on ~10% of pixels)
-    addPixelNoise(ctx, newW, newH, imageData);
+    // Noise writes into imageData.data in place; next call flushes to canvas.
+    addPixelNoise(data, newW, newH);
     ctx.putImageData(imageData, 0, 0);
 
-    // Export with randomized JPEG quality (85-95%)
     const quality = 0.85 + Math.random() * 0.10;
     const outBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
     bitmap.close();
     return outBlob;
   } catch (e) {
     console.warn('[ReVint] Image transform failed, using original:', e.message);
-    return blob; // Fallback: return original if transform fails
+    return blob;
   }
 }
 
-function addPixelNoise(ctx, w, h, imageData) {
-  const data = imageData ? imageData.data : ctx.getImageData(0, 0, w, h).data;
+function addPixelNoise(data, w, h) {
   const pixelCount = w * h;
-  const noisePixels = Math.floor(pixelCount * 0.08); // 8% of pixels
+  const noisePixels = Math.floor(pixelCount * 0.08);
   for (let n = 0; n < noisePixels; n++) {
     const idx = Math.floor(Math.random() * pixelCount) * 4;
     const noise = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
-    data[idx] = Math.min(255, Math.max(0, data[idx] + noise));
+    data[idx]   = Math.min(255, Math.max(0, data[idx]   + noise));
     data[idx+1] = Math.min(255, Math.max(0, data[idx+1] + noise));
     data[idx+2] = Math.min(255, Math.max(0, data[idx+2] + noise));
   }
-  if (!imageData) ctx.putImageData(new ImageData(data, w, h), 0, 0);
+}
+
+// ─── Limits & cooldowns (serialized per key to avoid lost updates) ───
+// Rationale on the numbers:
+//   • 7-day per-item cooldown: Vinted's recommender suppresses items that
+//     were reposted recently; 7 days is the empirical floor before visibility
+//     returns to normal.
+//   • 15 reposts/day: anti-ban threshold observed in the wild. Going higher
+//     significantly raises the risk of account flag.
+const storageMutex = new Map();
+async function withKeyMutex(key, fn) {
+  const prev = storageMutex.get(key) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  storageMutex.set(key, next.catch(() => {}));
+  return next;
 }
 
 // ─── Repost ──────────────────────────────────────────
 export async function repostItem(itemId, onProgress) {
-  // ── Cooldown par article (minimum 7 jours) ──
-  const { revint_repost_history: history } = await chrome.storage.local.get('revint_repost_history');
-  const repostHistory = history || {};
-  const lastRepost = repostHistory[itemId];
-  if (lastRepost) {
-    const daysSince = (Date.now() - lastRepost) / (1000 * 60 * 60 * 24);
-    if (daysSince < 7) {
-      throw new Error(`COOLDOWN: Cet article a ete reposte il y a ${Math.round(daysSince)} jours. Attendez ${Math.round(7 - daysSince)} jours.`);
-    }
-  }
-
-  // ── Limite quotidienne (max 15 reposts/jour) ──
-  const { revint_repost_daily: daily } = await chrome.storage.local.get('revint_repost_daily');
   const today = new Date().toISOString().slice(0, 10);
-  const repostToday = (daily?.date === today) ? daily.count : 0;
-  if (repostToday >= 15) {
-    throw new Error('DAILY_LIMIT: Maximum 15 reposts par jour atteint.');
-  }
+
+  // Per-item cooldown + per-day quota check MUST both read AND reserve the
+  // slot under the same mutex so concurrent reposts (popup + widget, two
+  // overlapping batches) can't both pass the 14→15 check. We reserve a slot
+  // up front and release it on failure to preserve quota.
+  await withKeyMutex('revint_repost_counters', async () => {
+    const { revint_repost_history: history, revint_repost_daily: daily } =
+      await chrome.storage.local.get(['revint_repost_history', 'revint_repost_daily']);
+    const repostHistory = (history && typeof history === 'object') ? history : {};
+    const lastRepost = repostHistory[itemId];
+    if (lastRepost) {
+      const daysSince = (Date.now() - lastRepost) / (1000 * 60 * 60 * 24);
+      if (daysSince < 7) {
+        throw new Error(`COOLDOWN: Cet article a ete reposte il y a ${Math.round(daysSince)} jours. Attendez ${Math.round(7 - daysSince)} jours.`);
+      }
+    }
+    const repostToday = (daily?.date === today) ? daily.count : 0;
+    if (repostToday >= 15) {
+      throw new Error('DAILY_LIMIT: Maximum 15 reposts par jour atteint.');
+    }
+    // Reserve the daily slot atomically. If anything downstream fails the
+    // error handler at the end of the function releases it again.
+    await chrome.storage.local.set({
+      revint_repost_daily: { date: today, count: repostToday + 1 },
+    });
+  });
+
+  let released = false;
+  const releaseSlot = async () => {
+    if (released) return;
+    released = true;
+    await withKeyMutex('revint_repost_counters', async () => {
+      const { revint_repost_daily: cur } = await chrome.storage.local.get('revint_repost_daily');
+      if (cur?.date === today && cur.count > 0) {
+        await chrome.storage.local.set({
+          revint_repost_daily: { date: today, count: cur.count - 1 },
+        });
+      }
+    });
+  };
 
   if (onProgress) onProgress('fetching', itemId);
-  const { item } = await getItemDetails(itemId);
-
-  // ── Backup avant toute action ──
-  const backupKey = `revint_backup_${itemId}`;
-  await chrome.storage.local.set({ [backupKey]: { item, timestamp: Date.now() } });
-
-  // Download, TRANSFORM, and re-upload all photos with new IDs
-  const newPhotos = [];
-  for (let i = 0; i < (item.photos || []).length; i++) {
-    const photo = item.photos[i];
-    const url = photo.full_size_url || photo.url;
-    if (!url) continue;
-    if (onProgress) onProgress('photo', itemId, i + 1, item.photos.length);
-    const blob = await fetchImageAsBlob(url);
-    // Transform image to defeat perceptual hash detection
-    const transformedBlob = await transformImage(blob);
-    const uploaded = await uploadPhoto(transformedBlob);
-    newPhotos.push({ id: uploaded.id, orientation: photo.orientation || 0 });
-    // Humanized delay: 1.5-4s between photo uploads
-    await delay(1500 + Math.random() * 2500);
+  let item;
+  try {
+    ({ item } = await getItemDetails(itemId));
+  } catch (e) {
+    await releaseSlot();
+    throw e;
   }
 
-  // ── CREATE le nouvel article d'abord ──
+  // Backup so the user can recover if anything downstream fails.
+  // Scope the key by user id to avoid cross-account contamination when
+  // multiple Vinted accounts are used in the same Chrome profile.
+  const userPrefix = state.userId ? `${state.userId}_` : '';
+  const backupKey = `revint_backup_${userPrefix}${itemId}`;
+  await chrome.storage.local.set({ [backupKey]: { item, timestamp: Date.now() } });
+
+  // Upload photos — track each successful upload so we can best-effort cleanup
+  // if a later step fails, instead of leaving them stranded on Vinted.
+  const newPhotos = [];
+  try {
+    for (let i = 0; i < (item.photos || []).length; i++) {
+      const photo = item.photos[i];
+      const url = photo.full_size_url || photo.url;
+      if (!url) continue;
+      if (onProgress) onProgress('photo', itemId, i + 1, item.photos.length);
+      const blob = await fetchImageAsBlob(url);
+      const transformedBlob = await transformImage(blob);
+      const uploaded = await uploadPhoto(transformedBlob);
+      newPhotos.push({ id: uploaded.id, orientation: photo.orientation || 0 });
+      await delay(1500 + Math.random() * 2500);
+    }
+  } catch (photoErr) {
+    // Photo phase failed: backup is still in storage, nothing visible to user
+    // has been changed yet. Release the reserved daily slot and propagate.
+    await releaseSlot();
+    throw new Error(`PHOTO_PHASE_FAILED: ${photoErr.message}`);
+  }
+
+  // Create the new item first. If this fails the original listing is
+  // untouched and we simply return the error.
   if (onProgress) onProgress('creating', itemId);
   const payload = {
     item: {
@@ -368,32 +433,64 @@ export async function repostItem(itemId, onProgress) {
     upload_session_id: crypto.randomUUID(),
   };
 
-  const created = await createItem(payload);
+  let created;
+  try {
+    created = await createItem(payload);
+  } catch (e) {
+    await releaseSlot();
+    throw e;
+  }
 
-  // ── Vérifier que la création a réussi avant de supprimer ──
   if (!created?.item?.id) {
+    await releaseSlot();
     throw new Error('REPOST_FAILED: La creation du nouvel article a echoue. L\'ancien article n\'a PAS ete supprime.');
   }
 
-  // ── Seulement maintenant, supprimer l'ancien article ──
+  // Creation succeeded — delete the original. If deletion fails we end up with
+  // two live listings (duplicate), which is user-visible. Retry once, and if
+  // that still fails, persist a pending-deletion record so a background alarm
+  // can retry later without losing the state.
   if (onProgress) onProgress('deleting', itemId);
-  await deleteItem(itemId);
+  let deletionError = null;
+  try {
+    await deleteItem(itemId);
+  } catch (e1) {
+    try {
+      await delay(2000);
+      await deleteItem(itemId);
+    } catch (e2) {
+      deletionError = e2;
+      const { revint_pending_deletions: pending } = await chrome.storage.local.get('revint_pending_deletions');
+      const list = Array.isArray(pending) ? pending : [];
+      list.push({ itemId, reason: e2.message, ts: Date.now() });
+      await chrome.storage.local.set({ revint_pending_deletions: list });
+      console.error('[ReVint] deleteItem failed twice, queued for later:', itemId, e2);
+    }
+  }
   await delay(500 + Math.random() * 1000);
 
-  // ── Succès : nettoyer le backup et enregistrer l'historique ──
+  // Success (or queued deletion): clean backup + update history atomically.
+  // The daily count was reserved up front, so we only update history here.
   await chrome.storage.local.remove(backupKey);
-
-  // Remove old item entry and track new item
-  delete repostHistory[itemId];
-  repostHistory[created.item.id] = Date.now();
-  await chrome.storage.local.set({ revint_repost_history: repostHistory });
-  await chrome.storage.local.set({ revint_repost_daily: { date: today, count: repostToday + 1 } });
+  await withKeyMutex('revint_repost_counters', async () => {
+    const { revint_repost_history: curHist } = await chrome.storage.local.get('revint_repost_history');
+    const h = (curHist && typeof curHist === 'object') ? curHist : {};
+    delete h[itemId];
+    h[created.item.id] = Date.now();
+    await chrome.storage.local.set({ revint_repost_history: h });
+  });
 
   if (onProgress) onProgress('done', itemId, created.item.id);
+  if (deletionError) {
+    return { ...created, _warning: 'ORIGINAL_DELETION_DEFERRED' };
+  }
   return created;
 }
 
-// ─── Notifications / Favorites ───────────────────────
+// Export this so the service worker can build its mutex-aware counters.
+export { withKeyMutex };
+
+// ─── Notifications / Messaging ───────────────────────
 export async function getNotifications(page = 1) {
   return api('GET', `/api/v2/notifications?page=${page}&per_page=20`);
 }

@@ -1,5 +1,5 @@
 // Injecte un bouton "Vendre un similaire" sur les pages article Vinted
-// Analysé sur le vrai DOM Vinted (avril 2026) :
+// DOM analysé sur le vrai rendu Vinted (avril 2026) :
 //   - Boutons "Acheter" (button), "Faire une offre" (button), "Message" (a)
 //   - Parent commun : <div class="u-grid u-gap-regular">
 //   - Grand-parent : <div class="details-list__item details-list--actions">
@@ -10,22 +10,30 @@
   let injectRetries = 0;
   const MAX_RETRIES = 20;
 
+  // Debounce the re-check: Vinted re-renders aggressively, so the observer
+  // fires dozens of times per second. We coalesce into a single scheduled pass.
+  let scheduled = false;
+  function schedule(fn, ms = 150) {
+    if (scheduled) return;
+    scheduled = true;
+    setTimeout(() => { scheduled = false; fn(); }, ms);
+  }
+
   function getItemId() {
     const m = window.location.pathname.match(/\/items\/(\d+)/);
     return m ? m[1] : null;
   }
 
   function tryInject() {
-    // Ne pas injecter si déjà présent
     if (document.getElementById('revint-sell-similar')) return;
 
     itemId = getItemId();
     if (!itemId) return;
 
-    // Stratégie 1 : Chercher le conteneur d'actions par sa classe exacte (Vinted 2026)
+    // Strategy 1: exact Vinted 2026 action container
     let container = document.querySelector('.details-list--actions .u-grid');
 
-    // Stratégie 2 : Chercher les boutons par texte (toutes langues) dans <button> ET <a>
+    // Strategy 2: locate by action button text in multiple languages
     if (!container) {
       const actionTexts = [
         'acheter', 'buy', 'kaufen', 'comprar', 'acquista', 'kopen',
@@ -36,17 +44,14 @@
       let lastMatch = null;
       for (const el of allClickable) {
         const text = el.textContent.trim().toLowerCase();
-        if (actionTexts.some(t => text === t)) {
-          lastMatch = el;
-        }
+        if (actionTexts.some(t => text === t)) lastMatch = el;
       }
       if (lastMatch) {
-        // Le conteneur parent est le grid qui contient tous les boutons
         container = lastMatch.closest('.u-grid') || lastMatch.parentElement;
       }
     }
 
-    // Stratégie 3 : Fallback générique
+    // Strategy 3: generic sidebar fallback
     if (!container) {
       container = document.querySelector(
         '[class*="details-list--actions"], [class*="item-sidebar"], aside'
@@ -62,16 +67,19 @@
     }
     injectRetries = 0;
 
-    // Créer le bouton
     const btn = document.createElement('button');
     btn.id = 'revint-sell-similar';
     btn.type = 'button';
-    btn.innerHTML = `
-      <span style="display:inline-flex;align-items:center;gap:8px;">
-        <span style="width:20px;height:20px;background:#E8C547;color:#1A1D3A;display:inline-grid;place-items:center;border-radius:5px;font-weight:900;font-size:11px;line-height:1;flex-shrink:0;">R</span>
-        Vendre un similaire
-      </span>
-    `;
+    // Static icon + label built via DOM APIs to avoid innerHTML churn.
+    const wrap = document.createElement('span');
+    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:8px;';
+    const badge = document.createElement('span');
+    badge.style.cssText = 'width:20px;height:20px;background:#E8C547;color:#1A1D3A;display:inline-grid;place-items:center;border-radius:5px;font-weight:900;font-size:11px;line-height:1;flex-shrink:0;';
+    badge.textContent = 'R';
+    const labelText = document.createTextNode('Vendre un similaire');
+    wrap.append(badge, labelText);
+    btn.appendChild(wrap);
+
     btn.style.cssText = `
       display: flex;
       align-items: center;
@@ -99,15 +107,13 @@
       btn.style.background = '#1A1D3A';
       btn.style.boxShadow = '0 2px 8px rgba(26,29,58,0.15)';
     });
-
     btn.addEventListener('click', handleClick);
 
-    // Injecter dans le conteneur (après les boutons existants)
     container.appendChild(btn);
   }
 
-  // Extract ALL article data from the page DOM + JSON-LD + breadcrumbs
-  // No API call needed — everything is in the page HTML
+  // Extract all article data from the page (JSON-LD + breadcrumbs + DOM).
+  // No API call needed — everything is in the page HTML.
   function extractArticleFromPage() {
     const data = {
       title: '', description: '', price: '', brand: '', currency: 'EUR',
@@ -116,7 +122,6 @@
       material: '', style: '', pattern: '',
     };
 
-    // ── 1. JSON-LD (Schema.org) — titre, description, prix, marque, couleur, catégorie ──
     document.querySelectorAll('script[type="application/ld+json"]').forEach(s => {
       try {
         const json = JSON.parse(s.textContent);
@@ -132,7 +137,7 @@
       } catch {}
     });
 
-    // ── 2. Breadcrumbs — catalog IDs (catégorie + sous-catégories) ──
+    // Breadcrumbs — catalog IDs (category + sub-categories) + brand id
     const breadcrumbs = [];
     document.querySelectorAll('a[href*="/catalog"]').forEach(a => {
       const catalogMatch = a.href.match(/\/catalog\/(\d+)/);
@@ -143,44 +148,33 @@
           catalogId: parseInt(catalogMatch[1]),
         });
       }
-      if (brandMatch && !data.brand_id) {
-        data.brand_id = parseInt(brandMatch[1]);
-      }
+      if (brandMatch && !data.brand_id) data.brand_id = parseInt(brandMatch[1]);
     });
     data.catalog_path = breadcrumbs;
-    // Le dernier breadcrumb avec un catalog_id unique est la catégorie feuille
     if (breadcrumbs.length > 0) {
-      // Prendre l'avant-dernier si le dernier est une marque-catégorie combinée
+      // Dedupe by catalogId and use the last unique entry as the leaf category.
       const unique = breadcrumbs.filter((b, i, arr) =>
         i === arr.findIndex(x => x.catalogId === b.catalogId)
       );
       data.catalog_id = unique[unique.length - 1]?.catalogId || null;
     }
 
-    // ── 3. Détails de la sidebar (innerText parsing) ──
+    // Sidebar details parsed from innerText
     const body = document.body.innerText;
     const detailsMap = {
-      'Taille': 'size',
-      'État': 'state',
-      'Couleur': 'color',
-      'Marque': 'brand',
-      'Matière': 'material',
-      'Style': 'style',
-      'Motif': 'pattern',
-      'Coupe': 'cut',
-      'Longueur': 'length',
+      'Taille': 'size', 'État': 'state', 'Couleur': 'color', 'Marque': 'brand',
+      'Matière': 'material', 'Style': 'style', 'Motif': 'pattern',
+      'Coupe': 'cut', 'Longueur': 'length',
     };
     for (const [label, key] of Object.entries(detailsMap)) {
       const rx = new RegExp(label + '\\s+([^\\n]+)');
       const m = body.match(rx);
-      if (m) {
-        const val = m[1].trim();
-        // Ne pas écraser les valeurs déjà trouvées sauf si vides
-        if (!data[key] || data[key] === '') data[key] = val;
+      if (m && (!data[key] || data[key] === '')) {
+        data[key] = m[1].trim();
       }
     }
 
-    // ── 4. DOM fallback pour le titre ──
+    // DOM fallback for title
     if (!data.title) {
       const headings = document.querySelectorAll('h1, h2');
       for (const h of headings) {
@@ -202,16 +196,15 @@
     const btn = document.getElementById('revint-sell-similar');
     if (!btn || btn.disabled) return;
 
-    const originalHTML = btn.innerHTML;
-    btn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:8px;">Chargement\u2026</span>';
+    const originalContent = btn.innerHTML;
+    btn.textContent = 'Chargement…';
     btn.disabled = true;
     btn.style.opacity = '0.7';
     btn.style.cursor = 'wait';
 
     try {
-      // Extract data from the page directly (no API call needed)
       const extracted = extractArticleFromPage();
-      if (!extracted.title) throw new Error('Impossible de lire les données de l\'article');
+      if (!extracted.title) throw new Error("Impossible de lire les données de l'article");
 
       const sellSimilarData = {
         title: extracted.title,
@@ -236,7 +229,13 @@
         timestamp: Date.now(),
       };
 
-      await chrome.storage.local.set({ revint_sell_similar: sellSimilarData });
+      try {
+        await chrome.storage.local.set({ revint_sell_similar: sellSimilarData });
+      } catch (storageErr) {
+        // If we can't persist, don't navigate — otherwise user lands on an
+        // empty /items/new and thinks the feature is broken.
+        throw new Error('Impossible de sauvegarder les données : ' + storageErr.message);
+      }
 
       window.location.href = `${window.location.origin}/items/new`;
     } catch (e) {
@@ -247,52 +246,44 @@
       btn.style.opacity = '1';
       btn.style.cursor = 'pointer';
       setTimeout(() => {
-        btn.innerHTML = originalHTML;
+        btn.innerHTML = originalContent;
         btn.style.color = '#FAF7F2';
         btn.style.background = '#1A1D3A';
       }, 3000);
     }
   }
 
-  // ── Init ──
+  // ── Init & lifecycle ──
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => setTimeout(tryInject, 800));
   } else {
     setTimeout(tryInject, 800);
   }
 
-  // ── SPA navigation handler ──
-  // Vinted est une SPA — le DOM se re-render sans rechargement
-  // On observe les changements d'URL et on réinjecte le bouton
+  // Vinted is an SPA — re-render without reload. Watch URL changes (debounced)
+  // and re-inject if our button disappeared. subtree:true on document.body
+  // is expensive; the debounce in schedule() is what keeps it cheap.
   const observer = new MutationObserver(() => {
-    const currentUrl = location.href;
-    if (currentUrl === lastUrl) {
-      // Même URL mais le DOM a peut-être été re-rendu (React)
-      // Vérifier si notre bouton a disparu
+    schedule(() => {
+      const currentUrl = location.href;
+      if (currentUrl !== lastUrl) {
+        lastUrl = currentUrl;
+        const existing = document.getElementById('revint-sell-similar');
+        if (existing) existing.remove();
+        if (getItemId()) {
+          injectRetries = 0;
+          tryInject();
+        }
+        return;
+      }
       if (getItemId() && !document.getElementById('revint-sell-similar')) {
         injectRetries = 0;
         tryInject();
       }
-      return;
-    }
-    // URL a changé (navigation SPA)
-    lastUrl = currentUrl;
-    const existing = document.getElementById('revint-sell-similar');
-    if (existing) existing.remove();
-    if (getItemId()) {
-      injectRetries = 0;
-      setTimeout(tryInject, 800);
-    }
+    });
   });
-
   observer.observe(document.body, { childList: true, subtree: true });
 
-  // ── Safety net: vérification périodique toutes les 3s ──
-  // Au cas où le MutationObserver rate un re-render React
-  setInterval(() => {
-    if (getItemId() && !document.getElementById('revint-sell-similar')) {
-      injectRetries = 0;
-      tryInject();
-    }
-  }, 3000);
+  // Cleanup on page teardown so we don't leak the observer.
+  window.addEventListener('pagehide', () => observer.disconnect(), { once: true });
 })();

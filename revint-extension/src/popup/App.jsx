@@ -17,6 +17,56 @@ import Automation from './screens/Automation.jsx';
 import Stats from './screens/Stats.jsx';
 import Settings from './screens/Settings.jsx';
 
+// Maps an internal background-task scope to a human-readable French label.
+const BG_ERROR_LABELS = {
+  'revint:autoReply': 'Auto-réponse',
+  'auto-reply-notifications': 'Auto-réponse (notifications)',
+  'auto-reply-item': 'Auto-réponse (article)',
+  'auto-reply-send': 'Auto-réponse (envoi)',
+  'scheduled-repost': 'Repost planifié',
+  'snapshot': 'Snapshot stats',
+  'daily-stats': 'Sync stats',
+};
+
+function BackgroundErrorBanner() {
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'revint:getLastError' })
+      .then(res => setErr(res?.error || null))
+      .catch(() => {});
+
+    const listener = (changes) => {
+      if (changes.revint_last_error) setErr(changes.revint_last_error.newValue || null);
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => chrome.storage.onChanged.removeListener(listener);
+  }, []);
+
+  if (!err) return null;
+  const label = BG_ERROR_LABELS[err.scope] || err.scope || 'Erreur';
+  const dismiss = () => {
+    setErr(null);
+    chrome.runtime.sendMessage({ type: 'revint:clearLastError' }).catch(() => {});
+  };
+
+  return (
+    <div style={{
+      background: 'rgba(184,58,58,0.08)', borderBottom: '1px solid var(--danger, #B83A3A)',
+      padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 11,
+    }}>
+      <span style={{ flex: 1, color: 'var(--danger, #B83A3A)' }}>
+        <b>{label}</b> — {err.message}
+      </span>
+      <button
+        onClick={dismiss}
+        style={{ background: 'none', border: 'none', color: 'var(--ink-4)', cursor: 'pointer', fontSize: 14, padding: 0 }}
+        title="Fermer"
+      >×</button>
+    </div>
+  );
+}
+
 export default function App() {
   const { dark, toggle: toggleTheme } = useTheme();
   const { session, loading: supaLoading, refresh: refreshSupaSession } = useSupaAuth();
@@ -39,7 +89,9 @@ export default function App() {
     }
   }, [supaLoading, authLoading, connected, session, screen]);
 
-  // Sync Vinted profile to Supabase when both sessions are available
+  // Sync Vinted profile to Supabase when both sessions are available.
+  // We log failures (RLS / auth expiry) instead of silently swallowing so
+  // the user can surface a stale-profile state in a future iteration.
   useEffect(() => {
     if (session && user) {
       chrome.runtime.sendMessage({
@@ -50,7 +102,7 @@ export default function App() {
           vinted_avatar_url: user.photo?.url,
           item_count: user.item_count,
         },
-      }).catch(() => {});
+      }).catch(e => console.warn('[App] supaUpdateProfile failed:', e));
     }
   }, [session, user]);
 
@@ -184,6 +236,7 @@ export default function App() {
         }
       />
       <Tabs current={tab} onChange={setTab} tabs={tabsList} />
+      <BackgroundErrorBanner />
       <div className="ext-main">
         {tab === 'dashboard' && <Dashboard user={user} articles={articles} go={go} />}
         {tab === 'articles' && <Articles articles={articles} go={go} />}

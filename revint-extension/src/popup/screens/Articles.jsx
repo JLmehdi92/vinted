@@ -97,19 +97,29 @@ function ArticleRow({ article, isSelected, onToggle, onClick }) {
   );
 }
 
+// Excel / Google Sheets interpret leading =, +, -, @, tab or CR in a cell
+// as a formula. A title like "=CMD|\u2026" could trigger code execution when the
+// CSV is opened. Prefix those with a single quote so the cell stays literal.
+function csvEscape(value) {
+  const s = String(value ?? '');
+  const needsFormulaGuard = /^[=+\-@\t\r]/.test(s);
+  const escaped = s.replace(/"/g, '""');
+  return `"${needsFormulaGuard ? "'" + escaped : escaped}"`;
+}
+
 function exportCSVFromArticles(items) {
   const headers = ['Titre', 'Prix', 'Marque', 'Taille', 'Vues', 'Favoris', 'Statut', 'URL'];
   const rows = items.map(a => [
-    `"${(a.title || '').replace(/"/g, '""')}"`,
-    a.price_numeric ?? a.price ?? '',
-    a.brand_title ?? a.brand ?? '',
-    a.size_title ?? a.size ?? '',
-    a.view_count ?? a.views ?? 0,
-    a.favourite_count ?? a.favs ?? 0,
-    classifyArticle(a),
-    a.url || '',
+    csvEscape(a.title || ''),
+    csvEscape(a.price_numeric ?? a.price ?? ''),
+    csvEscape(a.brand_title ?? a.brand ?? ''),
+    csvEscape(a.size_title ?? a.size ?? ''),
+    csvEscape(a.view_count ?? a.views ?? 0),
+    csvEscape(a.favourite_count ?? a.favs ?? 0),
+    csvEscape(classifyArticle(a)),
+    csvEscape(a.url || ''),
   ].join(','));
-  const csv = [headers.join(','), ...rows].join('\n');
+  const csv = [headers.map(csvEscape).join(','), ...rows].join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

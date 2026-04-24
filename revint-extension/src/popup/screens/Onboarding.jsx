@@ -13,8 +13,13 @@ export default function Onboarding({ onDone }) {
   const [stepStatus, setStepStatus] = useState([]); // [{ok, msg}] per step
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
+  const startedRef = React.useRef(false);
 
   useEffect(() => {
+    // Guard against React 18 StrictMode double-invoke which would otherwise
+    // launch two concurrent flows and produce duplicate step entries.
+    if (startedRef.current) return;
+    startedRef.current = true;
     runConnection();
   }, []);
 
@@ -58,10 +63,15 @@ export default function Onboarding({ onDone }) {
     setStep(2);
     try {
       const data = await chrome.runtime.sendMessage({ type: 'revint:getItems', page: 1, perPage: 1 });
+      if (data?.error) throw new Error(data.error);
       const count = data?.pagination?.total_entries || data?.items?.length || 0;
       setStepStatus(prev => [...prev, { ok: true, msg: `${count} articles` }]);
-    } catch {
-      setStepStatus(prev => [...prev, { ok: true, msg: 'OK' }]);
+    } catch (e) {
+      // Don't lie with a green checkmark: surface the failure so the user knows
+      // their dressing couldn't be synced and they need to take action.
+      setStepStatus(prev => [...prev, { ok: false, msg: 'Échec' }]);
+      setError('Impossible de synchroniser vos articles. Vérifiez votre connexion Vinted et réessayez.');
+      return;
     }
 
     await wait(400);
@@ -180,6 +190,7 @@ export default function Onboarding({ onDone }) {
                 setStepStatus([]);
                 setError(null);
                 setUser(null);
+                startedRef.current = true;
                 runConnection();
               }}
             >

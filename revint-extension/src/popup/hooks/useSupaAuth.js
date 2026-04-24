@@ -10,14 +10,17 @@ export default function useSupaAuth() {
     setLoading(true);
     setError(null);
     try {
-      const { session: s } = await chrome.runtime.sendMessage({ type: 'revint:supaGetSession' });
-      setSession(s);
-      if (s) {
-        const { profile: p } = await chrome.runtime.sendMessage({ type: 'revint:supaGetProfile' });
-        setProfile(p);
+      const sessionRes = await chrome.runtime.sendMessage({ type: 'revint:supaGetSession' });
+      if (sessionRes?.error) throw new Error(sessionRes.error);
+      setSession(sessionRes?.session || null);
+      if (sessionRes?.session) {
+        const profileRes = await chrome.runtime.sendMessage({ type: 'revint:supaGetProfile' });
+        if (profileRes?.error) throw new Error(profileRes.error);
+        setProfile(profileRes?.profile || null);
       }
     } catch (e) {
       console.error('[useSupaAuth]', e);
+      setError(e.message);
     } finally {
       setLoading(false);
     }

@@ -1,8 +1,15 @@
-// ReVint Floating Widget — injected into Vinted pages via content script
-// Renders inside a Shadow DOM to isolate styles from Vinted's page
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+// ReVint Floating Widget — injected into Vinted pages via content script.
+// Renders inside a Shadow DOM to isolate styles from Vinted's page.
+//
+// Note: esbuild's `iife` output cannot emit runtime code chunks, so even
+// though we use React.lazy() below, the popup App code is still inlined
+// in widget.js at build time. The win here is strictly lifecycle: the App
+// component tree (and its hooks' network chatter) only mounts when the
+// user opens the panel, not on every Vinted page load.
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from '../popup/App.jsx';
+
+const App = lazy(() => import('../popup/App.jsx'));
 
 // ─── Widget Shell ────────────────────────────────────
 function Widget() {
@@ -39,8 +46,10 @@ function Widget() {
   }, [position.x]);
 
   // ─── Drag handling ───
-  const handleMouseDown = useCallback((e) => {
-    if (e.button !== 0) return;
+  // Use pointer events instead of mouse-only so the FAB drags on touch
+  // devices / tablets / pen input too.
+  const handlePointerDown = useCallback((e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
     setDragging(true);
     setHasMoved(false);
     const fab = fabRef.current;
@@ -48,14 +57,16 @@ function Widget() {
     setDragStart({
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
+      pointerId: e.pointerId,
     });
+    try { fab.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
   }, []);
 
   useEffect(() => {
     if (!dragging || !dragStart) return;
 
-    const handleMouseMove = (e) => {
+    const handlePointerMove = (e) => {
       setHasMoved(true);
       const x = e.clientX - dragStart.offsetX;
       const y = e.clientY - dragStart.offsetY;
@@ -64,19 +75,23 @@ function Widget() {
       setPosition({ x: clampedX, y: clampedY });
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       setDragging(false);
       setPosition((pos) => {
-        chrome.storage.local.set({ revint_widget_pos: pos });
+        chrome.storage.local.set({ revint_widget_pos: pos }).catch(e => {
+          console.warn('[ReVint widget] pos save failed:', e);
+        });
         return pos;
       });
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
     };
   }, [dragging, dragStart]);
 
@@ -151,7 +166,7 @@ function Widget() {
         ref={fabRef}
         className="revint-fab"
         style={fabStyle}
-        onMouseDown={handleMouseDown}
+        onPointerDown={handlePointerDown}
         onClick={handleFabClick}
         title={open ? 'Fermer ReVint' : 'Ouvrir ReVint'}
       >
@@ -177,9 +192,14 @@ function Widget() {
           style={getPanelStyle()}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Note: App creates its own useVinted instance, independent from the popup.
-              This is intentional — the widget and popup can run simultaneously without conflict. */}
-          <App />
+          {/* App is lazy-loaded; show a minimal fallback while the chunk arrives. */}
+          <Suspense fallback={
+            <div style={{display:'grid',placeItems:'center',height:'100%',fontFamily:'var(--mono)',fontSize:11,color:'var(--ink-4)',letterSpacing:'0.1em'}}>
+              CHARGEMENT…
+            </div>
+          }>
+            <App />
+          </Suspense>
         </div>
       )}
     </>

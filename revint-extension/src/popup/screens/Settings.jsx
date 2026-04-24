@@ -64,15 +64,23 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
   // --- Reconnect handler ---
   const [reconnecting, setReconnecting] = useState(false);
   const [reconnectResult, setReconnectResult] = useState(null);
+  const [reconnectMessage, setReconnectMessage] = useState(null);
 
   const handleReconnect = async () => {
     setReconnecting(true);
     setReconnectResult(null);
+    setReconnectMessage(null);
     try {
       const result = await chrome.runtime.sendMessage({ type: 'revint:connect' });
-      setReconnectResult(result?.connected ? 'ok' : 'fail');
+      if (result?.connected) {
+        setReconnectResult('ok');
+      } else {
+        setReconnectResult('fail');
+        setReconnectMessage(result?.error || 'Connexion impossible.');
+      }
     } catch (e) {
       setReconnectResult('fail');
+      setReconnectMessage(e.message);
     } finally {
       setReconnecting(false);
     }
@@ -223,11 +231,16 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
               >
                 <div className="set-row-label">{reconnecting ? 'Reconnexion...' : 'Reconnecter'}</div>
                 <div className="set-row-value" style={{ fontSize: 9 }}>
-                  {reconnectResult === 'ok' && <span style={{ color: 'var(--success)' }}>Connecte</span>}
-                  {reconnectResult === 'fail' && <span style={{ color: 'var(--danger)' }}>Echoue</span>}
+                  {reconnectResult === 'ok' && <span style={{ color: 'var(--success)' }}>Connecté</span>}
+                  {reconnectResult === 'fail' && <span style={{ color: 'var(--danger)' }}>Échec</span>}
                   {!reconnectResult && <IconChev />}
                 </div>
               </div>
+              {reconnectMessage && reconnectResult === 'fail' && (
+                <div style={{ padding: '6px 14px 10px', fontSize: 10, color: 'var(--danger)', borderBottom: '1px solid var(--ext-line)' }}>
+                  {reconnectMessage}
+                </div>
+              )}
 
               {/* Se déconnecter */}
               <div
