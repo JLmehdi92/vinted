@@ -507,6 +507,12 @@ async function processAutoReplyTick() {
   const { revint_auto_reply: config } = await chrome.storage.local.get('revint_auto_reply');
   if (!config?.enabled) return;
 
+  // Don't attempt API calls if we haven't captured a Vinted session yet.
+  // The alarm fires every 5 min from install — hitting the API before the
+  // user navigated on Vinted would just produce NOT_AUTHENTICATED noise.
+  const st = getState();
+  if (!st.csrf || !st.origin) return;
+
   const { revint_settings: settings } = await chrome.storage.local.get('revint_settings');
   const hour = new Date().getHours();
   const actStart = settings?.activity_start ?? 9;

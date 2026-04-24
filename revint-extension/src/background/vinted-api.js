@@ -167,8 +167,15 @@ export async function getCurrentUser() {
 }
 
 // ─── Items ───────────────────────────────────────────
+// Vinted returns 404 when the user has zero items instead of an empty list.
+// Treat that as { items: [], pagination: null } so the popup doesn't crash.
 export async function getUserItems(userId, page = 1, perPage = 96) {
-  return api('GET', `/api/v2/users/${userId}/items?page=${page}&per_page=${perPage}`);
+  try {
+    return await api('GET', `/api/v2/users/${userId}/items?page=${page}&per_page=${perPage}`);
+  } catch (e) {
+    if (/VINTED_API_404/.test(e.message)) return { items: [], pagination: null };
+    throw e;
+  }
 }
 
 // Same pattern as getCurrentUser: only fall back on 404.
