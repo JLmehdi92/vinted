@@ -683,11 +683,10 @@ async function handleMessage(msg) {
     case 'revint:getUserInfo':
       return getUserInfo(msg.userId);
 
-    // ─── Smart Offers engine ──────────────────────────
+    // ─── Smart Offers engine (Dotb: single toggle = enable + start/stop) ──
     case 'revint:startSmartOffers': {
-      await chrome.storage.local.set({
-        revint_smart_offers: { ...(msg.config || msg.settings), enabled: true, startedAt: Date.now() },
-      });
+      const cfg = { ...(msg.config || msg.settings), enabled: true, startedAt: Date.now() };
+      await chrome.storage.local.set({ revint_smart_offers: cfg });
       chrome.alarms.create('revint:smartOffersTick', { when: Date.now() + 2000 });
       return { started: true };
     }
@@ -695,14 +694,29 @@ async function handleMessage(msg) {
     case 'revint:stopSmartOffers': {
       const { revint_smart_offers: so } = await chrome.storage.local.get('revint_smart_offers');
       if (so) await chrome.storage.local.set({ revint_smart_offers: { ...so, enabled: false } });
+      chrome.alarms.clear('revint:smartOffersTick');
       return { ok: true };
     }
 
-    // ─── Restocker engine ─────────────────────────────
+    case 'revint:toggleSmartOffers': {
+      const { revint_smart_offers: cur } = await chrome.storage.local.get('revint_smart_offers');
+      const wasEnabled = cur?.enabled;
+      if (wasEnabled) {
+        await chrome.storage.local.set({ revint_smart_offers: { ...cur, enabled: false } });
+        chrome.alarms.clear('revint:smartOffersTick');
+        return { enabled: false };
+      } else {
+        const cfg = { ...(msg.config || cur || {}), enabled: true, startedAt: Date.now() };
+        await chrome.storage.local.set({ revint_smart_offers: cfg });
+        chrome.alarms.create('revint:smartOffersTick', { when: Date.now() + 2000 });
+        return { enabled: true };
+      }
+    }
+
+    // ─── Restocker engine (same Dotb pattern) ─────────
     case 'revint:startRestocker': {
-      await chrome.storage.local.set({
-        revint_restocker: { ...(msg.config || msg.settings), enabled: true, processedOrderIds: [], startedAt: Date.now() },
-      });
+      const cfg = { ...(msg.config || msg.settings), enabled: true, processedOrderIds: [], startedAt: Date.now() };
+      await chrome.storage.local.set({ revint_restocker: cfg });
       chrome.alarms.create('revint:restockerTick', { when: Date.now() + 5000 });
       return { started: true };
     }
@@ -710,7 +724,23 @@ async function handleMessage(msg) {
     case 'revint:stopRestocker': {
       const { revint_restocker: rs } = await chrome.storage.local.get('revint_restocker');
       if (rs) await chrome.storage.local.set({ revint_restocker: { ...rs, enabled: false } });
+      chrome.alarms.clear('revint:restockerTick');
       return { ok: true };
+    }
+
+    case 'revint:toggleRestocker': {
+      const { revint_restocker: cur } = await chrome.storage.local.get('revint_restocker');
+      const wasEnabled = cur?.enabled;
+      if (wasEnabled) {
+        await chrome.storage.local.set({ revint_restocker: { ...cur, enabled: false } });
+        chrome.alarms.clear('revint:restockerTick');
+        return { enabled: false };
+      } else {
+        const cfg = { ...(msg.config || cur || {}), enabled: true, processedOrderIds: cur?.processedOrderIds || [], startedAt: Date.now() };
+        await chrome.storage.local.set({ revint_restocker: cfg });
+        chrome.alarms.create('revint:restockerTick', { when: Date.now() + 5000 });
+        return { enabled: true };
+      }
     }
 
     default:
@@ -926,18 +956,27 @@ async function processBulkEditTick() {
 }
 
 // ─── Auto-reply: one message per tick, scheduled via alarm chain ───
-// ─── Auto-reply: Dotb-pattern with v2 notifications, entry_type 20,
-// backlog/live modes, user filtering, per-item/per-user limits ───
+// Dotb pattern: ALWAYS re-arm the alarm, even when no candidates found.
+// Dotb uses while(true) loops; we use alarms, so we must re-arm on every exit path.
+function rearmAutoReply(config) {
+  if (!config?.enabled) return;
+  const minSec = (config.delayMin || 1) * 60;
+  const maxSec = (config.delayMax || 5) * 60;
+  chrome.alarms.create('revint:autoReply', {
+    when: Date.now() + (minSec + Math.random() * (maxSec - minSec)) * 1000,
+  });
+}
+
 async function processAutoReplyTick() {
   const { revint_auto_reply: config } = await chrome.storage.local.get('revint_auto_reply');
   if (!config?.enabled) return;
 
   const st = getState();
-  if (!st.csrf || !st.origin) return;
+  if (!st.csrf || !st.origin) { rearmAutoReply(config); return; }
 
   const { revint_settings: settings } = await chrome.storage.local.get('revint_settings');
   const hour = new Date().getHours();
-  if (hour < (settings?.activity_start ?? 9) || hour >= (settings?.activity_end ?? 22)) return;
+  if (hour < (settings?.activity_start ?? 9) || hour >= (settings?.activity_end ?? 22)) { rearmAutoReply(config); return; }
 
   const hourBucket = Math.floor(Date.now() / 3600000);
   const today = new Date().toISOString().slice(0, 10);
@@ -951,7 +990,7 @@ async function processAutoReplyTick() {
       dailyCount: (dailyData?.date === today) ? dailyData.count : 0,
     };
   });
-  if (gate.hourlyCount >= 18 || gate.dailyCount >= dailyLimit) return;
+  if (gate.hourlyCount >= 18 || gate.dailyCount >= dailyLimit) { rearmAutoReply(config); return; }
 
   // Dotb pattern: use /web/api/notifications with entry_type 20 for favorites
   let notifications;
@@ -967,7 +1006,7 @@ async function processAutoReplyTick() {
       if (!/VINTED_API_404|NOT_AUTHENTICATED/.test(e2.message)) {
         recordBackgroundError('auto-reply-notifications', e2);
       }
-      return;
+      rearmAutoReply(config); return;
     }
   }
 
@@ -1049,10 +1088,10 @@ async function processAutoReplyTick() {
     next = n;
     break;
   }
-  if (!next) return;
+  if (!next) { rearmAutoReply(config); return; }
 
   const match = (next.link || '').match(/\/inbox\/(\d+)/);
-  if (!match) return;
+  if (!match) { rearmAutoReply(config); return; }
   const offeringMatch = (next.link || '').match(/offering_id=(\d+)/);
   const itemId = offeringMatch ? offeringMatch[1] : null;
 
@@ -1066,7 +1105,7 @@ async function processAutoReplyTick() {
     } catch (e) {
       if (/DATADOME|RATE_LIMITED/.test(e.message)) {
         recordBackgroundError('auto-reply-item', e);
-        return;
+        rearmAutoReply(config); return;
       }
     }
   }
@@ -1138,15 +1177,11 @@ async function processAutoReplyTick() {
     }).catch(() => {});
     if (/DATADOME|RATE_LIMITED/.test(msgErr.message)) {
       recordBackgroundError('auto-reply-send', msgErr);
-      return;
+      rearmAutoReply(config); return;
     }
   }
 
-  const minDelaySec = (config.delayMin || 1) * 60;
-  const maxDelaySec = (config.delayMax || 5) * 60;
-  chrome.alarms.create('revint:autoReply', {
-    when: Date.now() + (minDelaySec + Math.random() * (maxDelaySec - minDelaySec)) * 1000,
-  });
+  rearmAutoReply(config);
 }
 
 async function syncDailyStats() {
