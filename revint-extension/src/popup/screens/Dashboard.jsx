@@ -86,7 +86,7 @@ export default function Dashboard({ user, articles, go }) {
           style={{
             fontFamily: 'var(--mono)',
             fontSize: 10,
-            color: 'var(--ink-4)',
+            color: 'var(--ext-fg-4)',
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
             marginBottom: 4,
@@ -105,7 +105,7 @@ export default function Dashboard({ user, articles, go }) {
         >
           Bonjour <em>{login}</em>.
           <br />
-          <span style={{ color: 'var(--ink-3)' }}>{stats.active} articles en ligne.</span>
+          <span style={{ color: 'var(--ext-fg-3)' }}>{stats.active} articles en ligne.</span>
         </div>
       </div>
 
@@ -155,7 +155,7 @@ export default function Dashboard({ user, articles, go }) {
             <IconBoost />
           </div>
           <div style={{ fontSize: 12, fontWeight: 500 }}>Reposter articles</div>
-          <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
+          <div style={{ fontSize: 10, color: 'var(--ext-fg-4)', fontFamily: 'var(--mono)' }}>
             {articles?.selected?.length || 0} sélectionnés
           </div>
         </button>
@@ -175,7 +175,7 @@ export default function Dashboard({ user, articles, go }) {
             <IconZap />
           </div>
           <div style={{ fontSize: 12, fontWeight: 500 }}>Auto-réponses</div>
-          <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
+          <div style={{ fontSize: 10, color: 'var(--ext-fg-4)', fontFamily: 'var(--mono)' }}>
             {autoCount} envoyée{autoCount !== 1 ? 's' : ''}
           </div>
         </button>
@@ -184,7 +184,7 @@ export default function Dashboard({ user, articles, go }) {
       {/* Activity feed */}
       <div className="sec-head" style={{ padding: '0 0 8px' }}>
         <div className="sec-title">Activité récente</div>
-        <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ink-4)' }}>RECENT</span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ext-fg-4)' }}>RECENT</span>
       </div>
       <div className="card" style={{ fontSize: 12 }}>
         {activity.length > 0 ? (
@@ -203,20 +203,20 @@ export default function Dashboard({ user, articles, go }) {
               style={{
                 fontFamily: 'var(--mono)',
                 fontSize: 10,
-                color: 'var(--ink-4)',
+                color: 'var(--ext-fg-4)',
                 width: 36,
               }}
             >
               {e.t}
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
-                <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{e.e}</b> · {e.who}
+              <div style={{ fontSize: 11, color: 'var(--ext-fg-3)' }}>
+                <b style={{ color: 'var(--ext-fg)', fontWeight: 500 }}>{e.e}</b> · {e.who}
               </div>
               <div
                 style={{
                   fontSize: 10,
-                  color: 'var(--ink-4)',
+                  color: 'var(--ext-fg-4)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -233,7 +233,7 @@ export default function Dashboard({ user, articles, go }) {
           </div>
           ))
         ) : (
-          <div style={{padding: '20px 14px', textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)', letterSpacing: '0.08em'}}>
+          <div style={{padding: '20px 14px', textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ext-fg-4)', letterSpacing: '0.08em'}}>
             Aucune activité récente
           </div>
         )}

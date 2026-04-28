@@ -57,7 +57,7 @@ function SmartTimeInfo() {
 
   if (loading) {
     return (
-      <div style={{ marginBottom: 14, padding: 10, background: 'var(--gold-wash)', border: '1px solid var(--gold)', borderRadius: 'var(--r)', fontSize: 11, color: 'var(--ink-2)' }}>
+      <div style={{ marginBottom: 14, padding: 10, background: 'var(--gold-wash)', border: '1px solid var(--gold)', borderRadius: 'var(--r)', fontSize: 11, color: 'var(--ext-fg-2)' }}>
         <b>Analyse en cours...</b>
       </div>
     );
@@ -65,14 +65,14 @@ function SmartTimeInfo() {
 
   if (!info) {
     return (
-      <div style={{ marginBottom: 14, padding: 10, background: 'var(--gold-wash)', border: '1px solid var(--gold)', borderRadius: 'var(--r)', fontSize: 11, color: 'var(--ink-2)' }}>
+      <div style={{ marginBottom: 14, padding: 10, background: 'var(--gold-wash)', border: '1px solid var(--gold)', borderRadius: 'var(--r)', fontSize: 11, color: 'var(--ext-fg-2)' }}>
         <b>Pas assez de données.</b> Utilisez l'extension quelques jours pour que ReVint calcule vos heures de pic.
       </div>
     );
   }
 
   return (
-    <div style={{ marginBottom: 14, padding: 10, background: 'var(--gold-wash)', border: '1px solid var(--gold)', borderRadius: 'var(--r)', fontSize: 11, color: 'var(--ink-2)' }}>
+    <div style={{ marginBottom: 14, padding: 10, background: 'var(--gold-wash)', border: '1px solid var(--gold)', borderRadius: 'var(--r)', fontSize: 11, color: 'var(--ext-fg-2)' }}>
       <b>Calculée sur vos stats :</b> pic d'audience {info.day} {info.hourStart}h-{info.hourEnd}h.
     </div>
   );
@@ -220,7 +220,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
           >
             Reposter <em>{count} articles</em> sélectionnés
           </div>
-          <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: 'var(--ext-fg-3)', marginBottom: 20 }}>
             Supprime et republie vos annonces pour les remettre en tête de recherche.
           </div>
 
@@ -309,7 +309,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
 
           {/* Schedule picker */}
           {mode === 'sched' && (
-            <div style={{marginBottom:14, padding:10, background:'var(--cream-2)', borderRadius:'var(--r)', display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+            <div style={{marginBottom:14, padding:10, background:'var(--ext-bg-2)', borderRadius:'var(--r)', display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
               <IconCal />
               <input type="date" value={schedDate} onChange={e => setSchedDate(e.target.value)} className="inp" style={{width:'auto', flex:1}} />
               <input type="time" value={schedTime} onChange={e => setSchedTime(e.target.value)} className="inp" style={{width:80}} />
@@ -340,7 +340,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
               <div
                 style={{
                   fontSize: 10,
-                  color: 'var(--ink-4)',
+                  color: 'var(--ext-fg-4)',
                   fontFamily: 'var(--mono)',
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
@@ -367,7 +367,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
             <Toggle on={draftMode} onClick={() => setDraftMode(!draftMode)} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 500 }}>Publier en brouillon</div>
-              <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 10, color: 'var(--ext-fg-4)', fontFamily: 'var(--mono)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 VÉRIFIER AVANT PUBLICATION
               </div>
             </div>
@@ -392,7 +392,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
             </div>
             {priceReduction && (
               <select
-                style={{ fontFamily: 'var(--mono)', fontSize: 10, padding: '2px 6px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', background: 'var(--ext-surface)', color: 'var(--ink-3)', cursor: 'pointer' }}
+                style={{ fontFamily: 'var(--mono)', fontSize: 10, padding: '2px 6px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', background: 'var(--ext-surface)', color: 'var(--ext-fg-3)', cursor: 'pointer' }}
                 value={priceReductionValue}
                 onChange={e => setPriceReductionValue(e.target.value)}
               >
@@ -420,7 +420,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
             <Toggle on={titleModifier} onClick={() => setTitleModifier(!titleModifier)} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 500 }}>Modifier le titre</div>
-              <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 10, color: 'var(--ext-fg-4)', fontFamily: 'var(--mono)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 ANTI-DOUBLON VINTED
               </div>
             </div>
@@ -438,7 +438,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
               gap: 10,
             }}
           >
-            <div style={{color:'var(--ink-4)', fontSize:11}}>
+            <div style={{color:'var(--ext-fg-4)', fontSize:11}}>
               <span style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'0.05em'}}>INFO</span> · Le repost crée une nouvelle annonce. Les vues et favoris repartent à zéro.
             </div>
           </div>
@@ -481,7 +481,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
               style={{
                 marginTop: 14,
                 padding: 12,
-                background: 'var(--cream-2)',
+                background: 'var(--ext-bg-2)',
                 border: '1px solid var(--line)',
                 borderRadius: 'var(--r)',
               }}
@@ -490,7 +490,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
                 style={{
                   fontFamily: 'var(--mono)',
                   fontSize: 10,
-                  color: 'var(--ink-3)',
+                  color: 'var(--ext-fg-3)',
                   marginBottom: 8,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
@@ -523,7 +523,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
           {progress?.status === 'scheduled' && (
             <div style={{marginTop:14, padding:12, background:'var(--gold-wash)', border:'1px solid var(--gold)', borderRadius:'var(--r)', fontSize:12}}>
               <div style={{fontWeight:600, marginBottom:4}}>Repost planifié !</div>
-              <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-3)'}}>
+              <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ext-fg-3)'}}>
                 {new Date(progress.when).toLocaleString('fr-FR')}
               </div>
             </div>
@@ -544,7 +544,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
               <div style={{ fontWeight: 600, marginBottom: 6 }}>
                 Repost terminé !
               </div>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ext-fg-3)' }}>
                 {progress.results.filter((r) => r.success).length}/{progress.results.length}{' '}
                 articles repostés avec succès
               </div>

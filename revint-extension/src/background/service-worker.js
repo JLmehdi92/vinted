@@ -11,7 +11,7 @@ import {
   getNotifications, sendMessage, getInbox, delay,
   withKeyMutex,
   getConversation, acceptOffer, rejectOffer, sendCounterOffer,
-  sendDiscountOffer, publishDraft,
+  sendDiscountOffer, publishDraft, uploadPhotoWithRetry, createItem,
   loadAccounts, getAccounts, saveAccount, removeAccount, switchAccount,
   getNotificationsV2, toggleFollow, getFollowers, getFollowing,
   setItemHidden, markConversationRead, deleteConversation,
@@ -1407,16 +1407,49 @@ async function processRestockerTick() {
       if (Date.now() - orderTs < delayMs) continue;
 
       try {
-        // Apply title modifier before restock (Dotb pattern)
-        if (backup.item.title) {
-          backup.item.title = autoModifyTitle(backup.item.title);
+        // Restocker creates a NEW item from backup data — the sold item is gone from Vinted.
+        // This is different from repostItem() which fetches+deletes the original.
+        const item = backup.item;
+        if (item.title) item.title = autoModifyTitle(item.title);
+
+        // Upload photos from backup URLs
+        const newPhotos = [];
+        for (const photo of (item.photos || []).slice(0, 20)) {
+          const url = photo.full_size_url || photo.url;
+          if (!url) continue;
+          try {
+            const blob = await fetchImageAsBlob(url);
+            const uploaded = await uploadPhotoWithRetry(blob);
+            newPhotos.push({ id: uploaded.id, orientation: photo.orientation || 0 });
+            await delay(1500 + Math.random() * 2500);
+          } catch { break; }
         }
-        const result = await repostItem(itemId);
+
+        if (newPhotos.length === 0) { processedIds.add(txId); continue; }
+
+        const payload = {
+          item: {
+            id: null, currency: item.price_currency || 'EUR',
+            temp_uuid: crypto.randomUUID(), title: item.title,
+            description: item.description, brand_id: item.brand_id,
+            brand: item.brand_title || item.brand || '',
+            size_id: item.size_id, catalog_id: item.catalog_id,
+            status_id: item.status_id || 1,
+            price: item.price_numeric || parseFloat(item.price) || 0,
+            package_size_id: item.package_size_id,
+            color_ids: item.color_ids || [],
+            assigned_photos: newPhotos,
+            item_attributes: item.item_attributes || [],
+          },
+          push_up: false, upload_session_id: crypto.randomUUID(),
+        };
+
+        const created = await createItem(payload);
         processedIds.add(txId);
         logRepost({
           oldItemId: itemId,
-          newItemId: result?.item?.id,
-          title: backup.item.title,
+          newItemId: created?.item?.id,
+          title: item.title,
           status: 'restocked',
         }).catch(() => {});
       } catch (e) {
