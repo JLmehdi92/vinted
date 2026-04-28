@@ -20,6 +20,8 @@ import SmartOffers from './screens/SmartOffers.jsx';
 import Restocker from './screens/Restocker.jsx';
 import BulkOps from './screens/BulkOps.jsx';
 import Orders from './screens/Orders.jsx';
+import AccountSwitcher from './components/AccountSwitcher.jsx';
+import InboxManager from './screens/InboxManager.jsx';
 
 // Maps an internal background-task scope to a human-readable French label.
 const BG_ERROR_LABELS = {
@@ -226,6 +228,7 @@ export default function App() {
     { id: 'restocker', label: 'Restock' },
     { id: 'bulk', label: 'Bulk' },
     { id: 'orders', label: 'Ventes' },
+    { id: 'inbox', label: 'Inbox' },
     { id: 'stats', label: 'Stats' },
   ];
 
@@ -235,6 +238,7 @@ export default function App() {
         connected={connected}
         right={
           <>
+            <AccountSwitcher />
             <ThemeToggle dark={dark} onToggle={toggleTheme} />
             <button className="ext-iconbtn" title="Rafraîchir" onClick={() => articles.refresh()}>
               <IconRefresh />
@@ -255,6 +259,7 @@ export default function App() {
         {tab === 'restocker' && <Restocker />}
         {tab === 'bulk' && <BulkOps articles={articles} />}
         {tab === 'orders' && <Orders />}
+        {tab === 'inbox' && <InboxManager />}
         {tab === 'stats' && <Stats articles={articles.articles} />}
       </div>
       {tab === 'articles' && articles.selected.length > 0 && (

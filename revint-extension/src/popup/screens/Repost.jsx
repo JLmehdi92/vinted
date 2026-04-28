@@ -86,6 +86,10 @@ const MODES = [
 export default function Repost({ selectedIds, articles, onBack, onDone }) {
   const [mode, setMode] = useState('now');
   const [delay, setDelay] = useState(true);
+  const [draftMode, setDraftMode] = useState(false);
+  const [priceReduction, setPriceReduction] = useState(false);
+  const [priceReductionValue, setPriceReductionValue] = useState('5');
+  const [titleModifier, setTitleModifier] = useState(true);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
   const [schedDate, setSchedDate] = useState('');
@@ -315,6 +319,81 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
                 }}
               >
                 5-15 MIN &middot; ÉVITE LES ANTI-SPAMS
+              </div>
+            </div>
+          </div>
+
+          {/* Draft mode toggle (Dotb pattern) */}
+          <div
+            style={{
+              padding: '10px 12px',
+              background: 'var(--ext-surface)',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--r)',
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <Toggle on={draftMode} onClick={() => setDraftMode(!draftMode)} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>Publier en brouillon</div>
+              <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                VÉRIFIER AVANT PUBLICATION
+              </div>
+            </div>
+          </div>
+
+          {/* Price reduction (Dotb pattern) */}
+          <div
+            style={{
+              padding: '10px 12px',
+              background: 'var(--ext-surface)',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--r)',
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <Toggle on={priceReduction} onClick={() => setPriceReduction(!priceReduction)} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>Réduire le prix au repost</div>
+            </div>
+            {priceReduction && (
+              <select
+                style={{ fontFamily: 'var(--mono)', fontSize: 10, padding: '2px 6px', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', background: 'var(--ext-surface)', color: 'var(--ink-3)', cursor: 'pointer' }}
+                value={priceReductionValue}
+                onChange={e => setPriceReductionValue(e.target.value)}
+              >
+                <option value="2">-2%</option>
+                <option value="5">-5%</option>
+                <option value="10">-10%</option>
+                <option value="15">-15%</option>
+              </select>
+            )}
+          </div>
+
+          {/* Title modifier (Dotb pattern) */}
+          <div
+            style={{
+              padding: '10px 12px',
+              background: 'var(--ext-surface)',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--r)',
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <Toggle on={titleModifier} onClick={() => setTitleModifier(!titleModifier)} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>Modifier le titre</div>
+              <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                ANTI-DOUBLON VINTED
               </div>
             </div>
           </div>
