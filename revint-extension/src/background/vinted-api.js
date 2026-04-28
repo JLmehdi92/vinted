@@ -1,6 +1,42 @@
 // ─── Vinted API — all endpoints for repost, messaging, items ───
 
-let state = { csrf: null, anonId: null, origin: null, userId: null };
+let state = { csrf: null, anonId: null, origin: null, userId: null, accountId: null };
+
+// ─── Multi-account management ───────────────────────
+// Each Vinted account is stored in chrome.storage.local under revint_accounts.
+// The active account is tracked by state.accountId. Switching accounts changes
+// the origin/csrf/userId so all API calls route to the right domain.
+let accounts = [];
+
+export async function loadAccounts() {
+  const { revint_accounts: stored } = await chrome.storage.local.get('revint_accounts');
+  accounts = Array.isArray(stored) ? stored : [];
+  return accounts;
+}
+
+export function getAccounts() { return [...accounts]; }
+
+export async function saveAccount(account) {
+  const idx = accounts.findIndex(a => a.id === account.id);
+  if (idx >= 0) accounts[idx] = { ...accounts[idx], ...account };
+  else accounts.push(account);
+  await chrome.storage.local.set({ revint_accounts: accounts });
+  return account;
+}
+
+export async function removeAccount(accountId) {
+  accounts = accounts.filter(a => a.id !== accountId);
+  await chrome.storage.local.set({ revint_accounts: accounts });
+}
+
+export async function switchAccount(accountId) {
+  const acc = accounts.find(a => a.id === accountId);
+  if (!acc) throw new Error('ACCOUNT_NOT_FOUND');
+  setState({ origin: acc.origin, userId: acc.id, accountId: acc.id });
+  const refreshed = await refreshCsrf(acc.origin);
+  if (!refreshed?.ok) throw new Error('SWITCH_FAILED: Could not refresh CSRF for this account');
+  return acc;
+}
 
 export function setState(patch) {
   Object.assign(state, patch);
@@ -453,13 +489,13 @@ export async function repostItem(itemId, onProgress) {
     throw new Error('REPOST_FAILED: La creation du nouvel article a echoue. L\'ancien article n\'a PAS ete supprime.');
   }
 
-  // Creation succeeded — delete the original. If deletion fails we end up with
-  // two live listings (duplicate), which is user-visible. Retry once, and if
-  // that still fails, persist a pending-deletion record so a background alarm
-  // can retry later without losing the state.
+  // Dotb pattern: hide first, wait, then delete. This is safer because a hidden
+  // item doesn't show as a duplicate to Vinted's detection while we wait.
   if (onProgress) onProgress('deleting', itemId);
   let deletionError = null;
   try {
+    await setItemHidden(itemId, true);
+    await delay(400 + Math.random() * 400);
     await deleteItem(itemId);
   } catch (e1) {
     try {
@@ -517,6 +553,117 @@ export async function sendMessage(conversationId, body) {
 
 export async function getInbox(page = 1) {
   return api('GET', `/api/v2/inbox?page=${page}&per_page=20`);
+}
+
+// ─── Notifications v2 (Dotb-style, better for favorites) ────
+// /web/api/notifications gives entry_type which lets us filter favorites (type 20)
+export async function getNotificationsV2(page = 1, perPage = 20) {
+  if (!state.origin) throw new Error('NOT_AUTHENTICATED');
+  const url = `${state.origin}/web/api/notifications/notifications?page=${page}&per_page=${perPage}`;
+  const res = await fetch(url, { credentials: 'include', headers: headers() });
+  if (!res.ok) {
+    if (res.status === 404) return { notifications: [] };
+    throw new Error(`NOTIF_V2_${res.status}`);
+  }
+  return res.json();
+}
+
+// ─── Follow / Unfollow ──────────────────────────────
+export async function toggleFollow(userId) {
+  return api('POST', '/api/v2/followed_users/toggle', { user_id: userId });
+}
+
+export async function getFollowers(userId, page = 1) {
+  return api('GET', `/api/v2/users/${userId}/followers?page=${page}&per_page=100`);
+}
+
+export async function getFollowing(userId, page = 1) {
+  return api('GET', `/api/v2/users/${userId}/followed_users?page=${page}&per_page=100`);
+}
+
+// ─── Hide / Unhide items ────────────────────────────
+export async function setItemHidden(itemId, isHidden) {
+  return api('PUT', `/api/v2/items/${itemId}/is_hidden`, { is_hidden: isHidden });
+}
+
+// ─── Mark conversation as read ──────────────────────
+export async function markConversationRead(conversationId) {
+  return api('PUT', `/api/v2/conversations/${conversationId}/mark_as_read`);
+}
+
+// ─── Delete conversation ────────────────────────────
+export async function deleteConversation(conversationId) {
+  if (!state.origin || !state.csrf) throw new Error('NOT_AUTHENTICATED');
+  const url = `${state.origin}/api/v2/conversations/${conversationId}`;
+  const res = await fetch(url, { method: 'DELETE', headers: headers(), credentials: 'include' });
+  if (!res.ok) throw new Error(`DELETE_CONV_${res.status}`);
+  return res.json();
+}
+
+// ─── Orders / Transactions ──────────────────────────
+export async function getOrders(page = 1, type = 'sold') {
+  const path = type === 'sold'
+    ? `/api/v2/my_orders?page=${page}&per_page=50&type=sold`
+    : `/api/v2/my_orders?page=${page}&per_page=50`;
+  return api('GET', path);
+}
+
+export async function getTransaction(transactionId) {
+  return api('GET', `/api/v2/transactions/${transactionId}`);
+}
+
+// ─── Shipping labels ────────────────────────────────
+export async function getShipmentLabelUrl(shipmentId) {
+  return api('GET', `/api/v2/shipments/${shipmentId}/label_url`);
+}
+
+// ─── User feedbacks ─────────────────────────────────
+export async function leaveFeedback(transactionId, rating = 5, feedback = '') {
+  return api('POST', '/api/v2/user_feedbacks', {
+    user_feedback: { transaction_id: transactionId, feedback_rating: rating, feedback }
+  });
+}
+
+export async function getUserInfo(userId) {
+  return api('GET', `/api/v2/users/${userId}?localize=false`);
+}
+
+// ─── Smart Offer pricing engine ─────────────────────
+// Replicates Dotb's 3-tier offer calculation
+
+export function calculateOfferPrices(itemPrice, offerSettings) {
+  const { offerType, simpleSettings, tieredSettings } = offerSettings;
+
+  if (offerType === 'simple' && simpleSettings) {
+    const minOffer = +(itemPrice * (100 - simpleSettings.acceptPercent) / 100).toFixed(2);
+    const counterPrice = +(itemPrice * (100 - simpleSettings.counterPercent) / 100).toFixed(2);
+    return { minimumOfferPrice: minOffer, counterOfferPrice: counterPrice };
+  }
+
+  if (offerType === 'tiered' && tieredSettings?.tiers) {
+    const tier = tieredSettings.tiers.find(t => itemPrice >= t.minAmount && itemPrice <= t.maxAmount);
+    if (!tier) return null;
+    const minOffer = +(itemPrice * (100 - tier.acceptPercent) / 100).toFixed(2);
+    const counterPrice = +(itemPrice * (100 - tier.counterPercent) / 100).toFixed(2);
+    return { minimumOfferPrice: minOffer, counterOfferPrice: counterPrice };
+  }
+
+  return null;
+}
+
+export function smartRound(price) {
+  if (price < 10) return Math.floor(price * 2) / 2;
+  return Math.floor(price);
+}
+
+// ─── Draft-based repost (Dotb pattern) ──────────────
+// Create draft first, then publish separately — safer than direct create
+export async function createDraft(itemPayload) {
+  return api('POST', '/api/v2/item_upload/drafts', itemPayload);
+}
+
+export async function publishDraft(draftId) {
+  return api('POST', `/api/v2/item_upload/drafts/${draftId}/completion`);
 }
 
 // ─── Conversations ──────────────────────────────────

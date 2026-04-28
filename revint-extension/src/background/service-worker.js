@@ -6,6 +6,11 @@ import {
   withKeyMutex,
   getConversation, acceptOffer, rejectOffer, sendCounterOffer,
   sendDiscountOffer, uploadPhotoWithRetry, transformImageIterative,
+  loadAccounts, getAccounts, saveAccount, removeAccount, switchAccount,
+  getNotificationsV2, toggleFollow, getFollowers, getFollowing,
+  setItemHidden, markConversationRead, deleteConversation,
+  getOrders, getTransaction, getShipmentLabelUrl, leaveFeedback,
+  getUserInfo, calculateOfferPrices, smartRound,
 } from './vinted-api.js';
 
 import {
@@ -21,6 +26,7 @@ import {
 
 // ─── Restore state on wake ──────────────────────────
 restoreState();
+loadAccounts().catch(() => {});
 
 // ─── Background error channel ────────────────────────
 // Persist any background-task failure so the popup can surface a banner
@@ -55,7 +61,9 @@ const vintedApiPatterns = [
   'https://www.vinted.hu/api/*', 'https://www.vinted.ro/api/*',
   'https://www.vinted.dk/api/*', 'https://www.vinted.fi/api/*',
   'https://www.vinted.hr/api/*', 'https://www.vinted.gr/api/*',
-  'https://www.vinted.net/api/*',
+  'https://www.vinted.net/api/*', 'https://www.vinted.ie/api/*',
+  'https://www.vinted.ee/api/*', 'https://www.vinted.lv/api/*',
+  'https://www.vinted.si/api/*',
 ];
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
@@ -106,6 +114,8 @@ async function ensureConnectedUser() {
         'https://www.vinted.se/*', 'https://www.vinted.hu/*', 'https://www.vinted.ro/*',
         'https://www.vinted.dk/*', 'https://www.vinted.fi/*', 'https://www.vinted.hr/*',
         'https://www.vinted.gr/*', 'https://www.vinted.net/*',
+        'https://www.vinted.ie/*', 'https://www.vinted.ee/*',
+        'https://www.vinted.lv/*', 'https://www.vinted.si/*',
       ] });
       if (tabs.length > 0) {
         const origin = new URL(tabs[0].url).origin;
@@ -156,6 +166,13 @@ async function handleMessage(msg) {
 
     case 'revint:tokensFromContent': {
       if (msg.csrf) setState({ csrf: msg.csrf, anonId: msg.anonId, origin: msg.origin });
+      return { ok: true };
+    }
+
+    case 'revint:vintedLogout': {
+      console.warn('[ReVint] Vinted logout detected:', msg.trigger || 'url-change');
+      setState({ csrf: null, anonId: null, userId: null });
+      await chrome.storage.local.remove(['revint_user', 'revint_last_error']);
       return { ok: true };
     }
 
@@ -399,6 +416,144 @@ async function handleMessage(msg) {
       return { limits };
     }
 
+    // ─── Multi-account ────────────────────────────────
+    case 'revint:getAccounts':
+      return { accounts: getAccounts() };
+
+    case 'revint:saveAccount': {
+      const acc = await saveAccount(msg.account);
+      return { account: acc };
+    }
+
+    case 'revint:removeAccount': {
+      await removeAccount(msg.accountId);
+      return { ok: true };
+    }
+
+    case 'revint:switchAccount': {
+      const acc = await switchAccount(msg.accountId);
+      const user = await getCurrentUser();
+      await persistUser(user);
+      return { ok: true, account: acc, user };
+    }
+
+    case 'revint:addVintedAccount': {
+      const user = await ensureConnectedUser();
+      const st = getState();
+      const acc = await saveAccount({
+        id: user.id,
+        login: user.login,
+        photo: user.photo?.url,
+        origin: st.origin,
+        item_count: user.item_count,
+        addedAt: Date.now(),
+      });
+      await persistUser(user);
+      return { ok: true, account: acc };
+    }
+
+    // ─── Notifications v2 ─────────────────────────────
+    case 'revint:getNotificationsV2':
+      return getNotificationsV2(msg.page || 1, msg.perPage || 20);
+
+    // ─── Follow / Unfollow ────────────────────────────
+    case 'revint:toggleFollow':
+      return toggleFollow(msg.userId);
+
+    case 'revint:getFollowers':
+      return getFollowers(msg.userId, msg.page || 1);
+
+    case 'revint:getFollowing':
+      return getFollowing(msg.userId, msg.page || 1);
+
+    case 'revint:bulkFollow': {
+      const results = [];
+      for (const userId of msg.userIds) {
+        try {
+          await toggleFollow(userId);
+          results.push({ userId, success: true });
+        } catch (e) {
+          results.push({ userId, success: false, error: e.message });
+        }
+        await delay(500 + Math.random() * 1000);
+      }
+      return { results };
+    }
+
+    // ─── Hide / Unhide ────────────────────────────────
+    case 'revint:setItemHidden':
+      return setItemHidden(msg.itemId, msg.isHidden);
+
+    case 'revint:bulkHide': {
+      const results = [];
+      for (const itemId of msg.itemIds) {
+        try {
+          await setItemHidden(itemId, msg.isHidden);
+          results.push({ itemId, success: true });
+        } catch (e) {
+          results.push({ itemId, success: false, error: e.message });
+        }
+        await delay(300 + Math.random() * 500);
+      }
+      return { results };
+    }
+
+    // ─── Conversations management ─────────────────────
+    case 'revint:markConversationRead':
+      return markConversationRead(msg.conversationId);
+
+    case 'revint:deleteConversation':
+      return deleteConversation(msg.conversationId);
+
+    // ─── Orders / Transactions ────────────────────────
+    case 'revint:getOrders':
+      return getOrders(msg.page || 1, msg.type || 'sold');
+
+    case 'revint:getTransaction':
+      return getTransaction(msg.transactionId);
+
+    // ─── Shipping labels ──────────────────────────────
+    case 'revint:getShipmentLabel':
+      return getShipmentLabelUrl(msg.shipmentId);
+
+    // ─── Feedback ─────────────────────────────────────
+    case 'revint:leaveFeedback':
+      return leaveFeedback(msg.transactionId, msg.rating || 5, msg.feedback || '');
+
+    // ─── User info ────────────────────────────────────
+    case 'revint:getUserInfo':
+      return getUserInfo(msg.userId);
+
+    // ─── Smart Offers engine ──────────────────────────
+    case 'revint:startSmartOffers': {
+      await chrome.storage.local.set({
+        revint_smart_offers: { ...msg.settings, enabled: true, startedAt: Date.now() },
+      });
+      chrome.alarms.create('revint:smartOffersTick', { when: Date.now() + 2000 });
+      return { started: true };
+    }
+
+    case 'revint:stopSmartOffers': {
+      const { revint_smart_offers: so } = await chrome.storage.local.get('revint_smart_offers');
+      if (so) await chrome.storage.local.set({ revint_smart_offers: { ...so, enabled: false } });
+      return { ok: true };
+    }
+
+    // ─── Restocker engine ─────────────────────────────
+    case 'revint:startRestocker': {
+      await chrome.storage.local.set({
+        revint_restocker: { ...msg.settings, enabled: true, processedOrderIds: [], startedAt: Date.now() },
+      });
+      chrome.alarms.create('revint:restockerTick', { when: Date.now() + 5000 });
+      return { started: true };
+    }
+
+    case 'revint:stopRestocker': {
+      const { revint_restocker: rs } = await chrome.storage.local.get('revint_restocker');
+      if (rs) await chrome.storage.local.set({ revint_restocker: { ...rs, enabled: false } });
+      return { ok: true };
+    }
+
     default:
       throw new Error(`UNKNOWN_MSG: ${msg.type}`);
   }
@@ -419,6 +574,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     else if (alarm.name === 'revint:batchTick') await processRepostBatchTick();
     else if (alarm.name === 'revint:bulkEditTick') await processBulkEditTick();
     else if (alarm.name === 'revint:pendingDeletions') await processPendingDeletions();
+    else if (alarm.name === 'revint:smartOffersTick') await processSmartOffersTick();
+    else if (alarm.name === 'revint:restockerTick') await processRestockerTick();
   } catch (e) {
     console.error('[ReVint] alarm handler error:', alarm.name, e);
     recordBackgroundError(alarm.name, e);
@@ -833,6 +990,152 @@ function extractName(html) {
 }
 
 // ─── Install / startup ──────────────────────────────
+// ─── Smart Offers engine ───────────────────────────
+// Polls inbox for pending offers, auto-accepts or counter-offers based on settings.
+// Dotb pattern: check offer price vs minimum → accept or counter with steps.
+async function processSmartOffersTick() {
+  const { revint_smart_offers: config } = await chrome.storage.local.get('revint_smart_offers');
+  if (!config?.enabled) return;
+
+  const st = getState();
+  if (!st.csrf || !st.origin) return;
+
+  try {
+    const inboxData = await getInbox(1);
+    const conversations = inboxData?.conversations || [];
+
+    for (const conv of conversations) {
+      if (!conv.transaction?.id || !conv.last_message) continue;
+      const lastMsg = conv.last_message;
+      if (lastMsg.entity_type !== 'offer_request_message') continue;
+      if (!lastMsg.entity?.price) continue;
+
+      const offerPrice = parseFloat(typeof lastMsg.entity.price === 'string'
+        ? lastMsg.entity.price : lastMsg.entity.price.amount);
+      const itemPrice = parseFloat(conv.transaction?.item?.price || 0);
+      if (!itemPrice || !offerPrice) continue;
+
+      const prices = calculateOfferPrices(itemPrice, config);
+      if (!prices) continue;
+
+      let minOffer = prices.minimumOfferPrice;
+      if (config.enableRounding) minOffer = smartRound(minOffer);
+
+      const { revint_smart_offers_replied: replied } = await chrome.storage.local.get('revint_smart_offers_replied');
+      const repliedSet = new Set(replied || []);
+      const convKey = `${conv.id}_${lastMsg.id}`;
+      if (repliedSet.has(convKey)) continue;
+
+      // Dotb waits at least 30s before responding
+      const offerAge = (Date.now() / 1000) - (lastMsg.created_at_ts || 0);
+      if (offerAge < 30) continue;
+
+      if (offerPrice >= minOffer) {
+        try {
+          await acceptOffer(conv.transaction.id, lastMsg.entity.id);
+          if (config.acceptMessage) {
+            const msg = config.acceptMessage.replace(/@username/g, conv.opposite_user?.login || '');
+            await sendMessage(conv.id, msg);
+          }
+        } catch (e) {
+          console.warn('[ReVint] Smart offer accept failed:', e.message);
+        }
+      } else if (config.enableCounter) {
+        let counterPrice = prices.counterOfferPrice;
+        if (config.enableRounding) counterPrice = smartRound(counterPrice);
+        try {
+          await sendCounterOffer(conv.transaction.id, counterPrice);
+          if (config.counterMessage) {
+            const msg = config.counterMessage.replace(/@username/g, conv.opposite_user?.login || '');
+            await sendMessage(conv.id, msg);
+          }
+        } catch (e) {
+          console.warn('[ReVint] Smart counter-offer failed:', e.message);
+        }
+      }
+
+      repliedSet.add(convKey);
+      await chrome.storage.local.set({ revint_smart_offers_replied: [...repliedSet] });
+      await delay(2000 + Math.random() * 3000);
+    }
+  } catch (e) {
+    if (!/NOT_AUTHENTICATED|DATADOME/.test(e.message)) {
+      recordBackgroundError('smart-offers', e);
+    }
+  }
+
+  if (config.enabled) {
+    const delayMs = (config.checkIntervalMin || 3) * 60000;
+    chrome.alarms.create('revint:smartOffersTick', { when: Date.now() + delayMs + Math.random() * 60000 });
+  }
+}
+
+// ─── Restocker engine ─────────────────────────────
+// Polls sold orders and auto-reposts items that have backup data.
+// Dotb pattern: check orders → find sold items → repost from backup.
+async function processRestockerTick() {
+  const { revint_restocker: config } = await chrome.storage.local.get('revint_restocker');
+  if (!config?.enabled) return;
+
+  const st = getState();
+  if (!st.csrf || !st.origin || !st.userId) return;
+
+  try {
+    const ordersData = await getOrders(1, 'sold');
+    const orders = ordersData?.my_orders || ordersData?.orders || [];
+    const processedIds = new Set(config.processedOrderIds || []);
+
+    for (const order of orders) {
+      const txId = order.transaction_id || order.id;
+      if (processedIds.has(txId)) continue;
+
+      const itemId = order.item_id || order.item?.id;
+      if (!itemId) { processedIds.add(txId); continue; }
+
+      // Check if we have a backup for this item
+      const userPrefix = st.userId ? `${st.userId}_` : '';
+      const backupKey = `revint_backup_${userPrefix}${itemId}`;
+      const { [backupKey]: backup } = await chrome.storage.local.get(backupKey);
+
+      if (!backup?.item) { processedIds.add(txId); continue; }
+
+      // Wait configured delay before restocking
+      const orderTs = order.created_at ? new Date(order.created_at).getTime() : Date.now();
+      const delaySec = config.delayBeforeRestock || 300;
+      if (Date.now() - orderTs < delaySec * 1000) continue;
+
+      try {
+        const result = await repostItem(itemId);
+        processedIds.add(txId);
+        logRepost({
+          oldItemId: itemId,
+          newItemId: result?.item?.id,
+          title: backup.item.title,
+          status: 'restocked',
+        }).catch(() => {});
+      } catch (e) {
+        console.warn('[ReVint] Restocker failed for item:', itemId, e.message);
+        processedIds.add(txId);
+      }
+
+      await delay(5000 + Math.random() * 10000);
+    }
+
+    await chrome.storage.local.set({
+      revint_restocker: { ...config, processedOrderIds: [...processedIds] },
+    });
+  } catch (e) {
+    if (!/NOT_AUTHENTICATED|DATADOME/.test(e.message)) {
+      recordBackgroundError('restocker', e);
+    }
+  }
+
+  if (config.enabled) {
+    const intervalMs = (config.checkIntervalMin || 5) * 60000;
+    chrome.alarms.create('revint:restockerTick', { when: Date.now() + intervalMs });
+  }
+}
+
 // Retry pending item deletions that failed during repost
 async function processPendingDeletions() {
   const st = getState();

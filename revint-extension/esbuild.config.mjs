@@ -72,6 +72,12 @@ const configs = [
     outfile: 'dist/form-filler.js',
     format: 'iife',
   },
+  {
+    ...shared,
+    entryPoints: ['src/content/logout-detector.js'],
+    outfile: 'dist/logout-detector.js',
+    format: 'iife',
+  },
 ];
 
 if (isWatch) {
