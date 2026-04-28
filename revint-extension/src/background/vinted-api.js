@@ -285,19 +285,21 @@ export async function uploadPhoto(blob, filename = 'photo.jpg') {
 //   • pixel noise on ~8% of pixels (±1 unit)
 //   • randomized JPEG quality (85-95%)
 // Uses OffscreenCanvas which is available in MV3 service workers.
-async function transformImage(blob) {
+// Apply preset-aware transforms (Dotb: 26 presets with rotation/skew/brightness/contrast/etc.)
+async function transformImage(blob, presetTransform = null) {
   try {
     const bitmap = await createImageBitmap(blob);
-    const { width, height } = bitmap;
+    let { width, height } = bitmap;
 
-    const cropL = 1 + Math.floor(Math.random() * 3);
-    const cropT = 1 + Math.floor(Math.random() * 3);
-    const cropR = 1 + Math.floor(Math.random() * 3);
-    const cropB = 1 + Math.floor(Math.random() * 3);
+    // Apply preset-specific crop amounts (or random defaults)
+    const t = presetTransform || {};
+    const cropL = t.cropLeft || (1 + Math.floor(Math.random() * 3));
+    const cropT = t.cropTop || (1 + Math.floor(Math.random() * 3));
+    const cropR = t.cropRight || (1 + Math.floor(Math.random() * 3));
+    const cropB = t.cropBottom || (1 + Math.floor(Math.random() * 3));
     const newW = width - cropL - cropR;
     const newH = height - cropT - cropB;
 
-    // Image too small for safe cropping: only add noise on the original size.
     if (newW < 100 || newH < 100) {
       const canvas = new OffscreenCanvas(width, height);
       const ctx = canvas.getContext('2d');
@@ -310,21 +312,80 @@ async function transformImage(blob) {
       return outBlob;
     }
 
+    // Apply rotation/skew from preset (Dotb: rotate ±3°, skew ±0.25°)
+    const rotDeg = t.rotate || 0;
+    const skewXDeg = t.skewX || 0;
+    const skewYDeg = t.skewY || 0;
+    const needsTransform = rotDeg || skewXDeg || skewYDeg;
+
     const canvas = new OffscreenCanvas(newW, newH);
     const ctx = canvas.getContext('2d');
+
+    if (needsTransform) {
+      ctx.translate(newW / 2, newH / 2);
+      if (rotDeg) ctx.rotate(rotDeg * Math.PI / 180);
+      if (skewXDeg || skewYDeg) {
+        ctx.transform(1, Math.tan(skewYDeg * Math.PI / 180), Math.tan(skewXDeg * Math.PI / 180), 1, 0, 0);
+      }
+      ctx.translate(-newW / 2, -newH / 2);
+    }
     ctx.drawImage(bitmap, cropL, cropT, newW, newH, 0, 0, newW, newH);
 
-    const brightnessShift = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.floor(Math.random() * 4));
+    // Apply brightness/contrast/saturation from preset + random jitter
+    const brightnessShift = (t.brightness || 0) + (Math.random() > 0.5 ? 1 : -1) * (2 + Math.floor(Math.random() * 4));
+    const contrastShift = t.contrast || 0;
+    const saturationShift = t.saturation || 0;
     const imageData = ctx.getImageData(0, 0, newW, newH);
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
-      data[i]   = Math.min(255, Math.max(0, data[i]   + brightnessShift));
-      data[i+1] = Math.min(255, Math.max(0, data[i+1] + brightnessShift));
-      data[i+2] = Math.min(255, Math.max(0, data[i+2] + brightnessShift));
+      let r = data[i], g = data[i+1], b = data[i+2];
+      // Brightness
+      r += brightnessShift; g += brightnessShift; b += brightnessShift;
+      // Contrast (simple linear)
+      if (contrastShift) {
+        const f = (259 * (contrastShift + 255)) / (255 * (259 - contrastShift));
+        r = f * (r - 128) + 128;
+        g = f * (g - 128) + 128;
+        b = f * (b - 128) + 128;
+      }
+      // Saturation (desaturate/saturate via luminance)
+      if (saturationShift) {
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        const sat = 1 + saturationShift / 100;
+        r = lum + sat * (r - lum);
+        g = lum + sat * (g - lum);
+        b = lum + sat * (b - lum);
+      }
+      data[i]   = Math.min(255, Math.max(0, r));
+      data[i+1] = Math.min(255, Math.max(0, g));
+      data[i+2] = Math.min(255, Math.max(0, b));
     }
-    // Noise writes into imageData.data in place; next call flushes to canvas.
-    addPixelNoise(data, newW, newH);
+
+    // Noise (preset amount or default 8%)
+    const noiseRatio = t.noise || 0.08;
+    const pixelCount = newW * newH;
+    const noisePixels = Math.floor(pixelCount * noiseRatio);
+    for (let n = 0; n < noisePixels; n++) {
+      const idx = Math.floor(Math.random() * pixelCount) * 4;
+      const noise = Math.floor(Math.random() * 3) - 1;
+      data[idx]   = Math.min(255, Math.max(0, data[idx]   + noise));
+      data[idx+1] = Math.min(255, Math.max(0, data[idx+1] + noise));
+      data[idx+2] = Math.min(255, Math.max(0, data[idx+2] + noise));
+    }
     ctx.putImageData(imageData, 0, 0);
+
+    // Border from preset (Dotb: 3-5px colored border)
+    if (t.border) {
+      const bw = t.border;
+      const borderCanvas = new OffscreenCanvas(newW + bw * 2, newH + bw * 2);
+      const bCtx = borderCanvas.getContext('2d');
+      bCtx.fillStyle = '#FFFFFF';
+      bCtx.fillRect(0, 0, borderCanvas.width, borderCanvas.height);
+      bCtx.drawImage(canvas, bw, bw);
+      const outBlob = await borderCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 + Math.random() * 0.10 });
+      bitmap.close();
+      return outBlob;
+    }
 
     const quality = 0.85 + Math.random() * 0.10;
     const outBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
@@ -364,7 +425,7 @@ async function withKeyMutex(key, fn) {
 }
 
 // ─── Repost ──────────────────────────────────────────
-export async function repostItem(itemId, onProgress) {
+export async function repostItem(itemId, onProgress, options = {}) {
   const today = new Date().toISOString().slice(0, 10);
 
   // Per-item cooldown + per-day quota check MUST both read AND reserve the
@@ -439,7 +500,7 @@ export async function repostItem(itemId, onProgress) {
       if (onProgress) onProgress('photo', itemId, i + 1, item.photos.length);
       const blob = await photoLimiter(async () => {
         const raw = await fetchImageAsBlob(url);
-        const transformed = await transformImageIterative(raw);
+        const transformed = await transformImageIterative(raw, 8, 0.82, preset.transform);
         return transformed;
       });
       const uploaded = await uploadPhotoWithRetry(blob);
@@ -494,7 +555,11 @@ export async function repostItem(itemId, onProgress) {
 
   let created;
   try {
-    created = await createItem(payload);
+    if (options.draftMode) {
+      created = await createDraft(payload);
+    } else {
+      created = await createItem(payload);
+    }
   } catch (e) {
     await releaseSlot();
     throw e;
@@ -787,10 +852,10 @@ async function addNoisyBorder(ctx, w, h, borderWidth) {
 // Iteratively alter an image until its similarity to the original drops
 // below the target threshold. Falls back to a single transform if
 // OffscreenCanvas isn't available (shouldn't happen in MV3 SW).
-export async function transformImageIterative(blob, maxAttempts = 8, targetSimilarity = 0.82) {
+export async function transformImageIterative(blob, maxAttempts = 8, targetSimilarity = 0.82, presetTransform = null) {
   let current = blob;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const altered = await transformImage(current);
+    const altered = await transformImage(current, presetTransform);
     try {
       const similarity = await compareImages(blob, altered);
       if (similarity < targetSimilarity) return altered;

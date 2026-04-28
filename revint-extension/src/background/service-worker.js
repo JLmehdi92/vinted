@@ -11,7 +11,7 @@ import {
   getNotifications, sendMessage, getInbox, delay,
   withKeyMutex,
   getConversation, acceptOffer, rejectOffer, sendCounterOffer,
-  sendDiscountOffer, publishDraft, uploadPhotoWithRetry, createItem,
+  sendDiscountOffer, publishDraft, createDraft, uploadPhotoWithRetry, createItem,
   loadAccounts, getAccounts, saveAccount, removeAccount, switchAccount,
   getNotificationsV2, toggleFollow, getFollowers, getFollowing,
   setItemHidden, markConversationRead, deleteConversation,
@@ -796,7 +796,7 @@ async function processRepostBatchTick() {
         console.warn('[ReVint] Pre-repost modifications failed:', e.message);
       }
     }
-    const r = await repostItem(itemId);
+    const r = await repostItem(itemId, null, { draftMode: batch.draftMode || false });
     result = { itemId, success: true, newId: r.item?.id };
     logRepost({
       oldItemId: itemId,
@@ -1444,7 +1444,7 @@ async function processRestockerTick() {
           push_up: false, upload_session_id: crypto.randomUUID(),
         };
 
-        const created = await createItem(payload);
+        const created = config.publishAsDraft ? await createDraft(payload) : await createItem(payload);
         processedIds.add(txId);
         logRepost({
           oldItemId: itemId,
