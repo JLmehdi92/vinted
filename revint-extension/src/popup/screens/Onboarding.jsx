@@ -3,9 +3,9 @@ import Header from '../components/Header';
 import { IconChev } from '../components/Icons';
 
 const STEPS = [
-  { label: 'Détection session Vinted…', sub: 'cookie _vinted_fr_session' },
-  { label: 'Récupération du profil…', sub: 'GET /api/v2/users/me' },
-  { label: 'Synchronisation articles…', sub: 'chargement du dressing' },
+  { label: 'Detection session Vinted...', sub: 'cookie _vinted_fr_session' },
+  { label: 'Recuperation du profil...', sub: 'GET /api/v2/users/me' },
+  { label: 'Synchronisation articles...', sub: 'chargement du dressing' },
 ];
 
 export default function Onboarding({ onDone }) {
@@ -25,7 +25,7 @@ export default function Onboarding({ onDone }) {
 
   async function runConnection() {
     // ── Step 0: Detect session ──
-    // revint:connect gère tout : détection CSRF, refresh si périmé, retry
+    // revint:connect gere tout : detection CSRF, refresh si perime, retry
     setStep(0);
     setStepStatus([]);
     await wait(300);
@@ -33,19 +33,19 @@ export default function Onboarding({ onDone }) {
 
     await wait(400);
 
-    // ── Step 1: Get profile (revint:connect gère le CSRF refresh automatiquement) ──
+    // ── Step 1: Get profile (revint:connect gere le CSRF refresh automatiquement) ──
     setStep(1);
     try {
       const result = await chrome.runtime.sendMessage({ type: 'revint:connect' });
       if (!result?.connected || !result?.user) {
         const errorMsg = result?.error || '';
-        // Message d'erreur adapté selon le cas
+        // Message d'erreur adapte selon le cas
         if (errorMsg.includes('NOT_AUTHENTICATED') || errorMsg.includes('Ouvrez Vinted')) {
-          setStepStatus(prev => [...prev, { ok: false, msg: 'Session non trouvée' }]);
-          setError('Connectez-vous à Vinted dans un onglet, naviguez un peu sur le site, puis cliquez Réessayer.');
+          setStepStatus(prev => [...prev, { ok: false, msg: 'Session non trouvee' }]);
+          setError('Connectez-vous a Vinted dans un onglet, naviguez un peu sur le site, puis cliquez Reessayer.');
         } else {
-          setStepStatus(prev => [...prev, { ok: false, msg: 'Échec' }]);
-          setError('Naviguez sur vinted.fr (accueil, recherche...) pour activer la session, puis cliquez Réessayer.');
+          setStepStatus(prev => [...prev, { ok: false, msg: 'Echec' }]);
+          setError('Naviguez sur vinted.fr (accueil, recherche...) pour activer la session, puis cliquez Reessayer.');
         }
         return;
       }
@@ -53,7 +53,7 @@ export default function Onboarding({ onDone }) {
       setStepStatus(prev => [...prev, { ok: true, msg: `@${result.user.login}` }]);
     } catch (e) {
       setStepStatus(prev => [...prev, { ok: false, msg: 'Erreur' }]);
-      setError('Impossible de récupérer votre profil Vinted. Vérifiez que vous êtes connecté sur vinted.fr.');
+      setError('Impossible de recuperer votre profil Vinted. Verifiez que vous etes connecte sur vinted.fr.');
       return;
     }
 
@@ -69,8 +69,8 @@ export default function Onboarding({ onDone }) {
     } catch (e) {
       // Don't lie with a green checkmark: surface the failure so the user knows
       // their dressing couldn't be synced and they need to take action.
-      setStepStatus(prev => [...prev, { ok: false, msg: 'Échec' }]);
-      setError('Impossible de synchroniser vos articles. Vérifiez votre connexion Vinted et réessayez.');
+      setStepStatus(prev => [...prev, { ok: false, msg: 'Echec' }]);
+      setError('Impossible de synchroniser vos articles. Verifiez votre connexion Vinted et reessayez.');
       return;
     }
 
@@ -113,7 +113,7 @@ export default function Onboarding({ onDone }) {
             fontFamily: 'var(--display)', fontWeight: 800, fontSize: 24,
             letterSpacing: -0.8, marginBottom: 8,
           }}>
-            {isError ? 'Connexion échouée' : isDone ? `Bienvenue, ${user?.login || ''}` : 'Connexion en cours'}
+            {isError ? 'Connexion echouee' : isDone ? `Bienvenue, ${user?.login || ''}` : 'Connexion en cours'}
           </div>
 
           {/* Subtitle */}
@@ -124,16 +124,23 @@ export default function Onboarding({ onDone }) {
             {isError
               ? error
               : isDone
-              ? 'Votre dressing est prêt.'
-              : 'On récupère votre session depuis les cookies Vinted. Aucun mot de passe requis.'}
+              ? 'Votre dressing est pret.'
+              : 'On recupere votre session depuis les cookies Vinted. Aucun mot de passe requis.'}
           </div>
 
-          {/* Steps */}
-          <div style={{
-            textAlign: 'left', background: 'var(--cream-2)', border: '1px solid var(--line)',
-            borderRadius: 'var(--r)', padding: 12, fontFamily: 'var(--mono)', fontSize: 11,
-            maxWidth: 300, marginLeft: 'auto', marginRight: 'auto',
-          }}>
+          {/* Steps card */}
+          <div
+            className="card"
+            style={{
+              textAlign: 'left',
+              padding: 14,
+              fontFamily: 'var(--mono)',
+              fontSize: 11,
+              maxWidth: 300,
+              marginLeft: 'auto',
+              marginRight: 'auto',
+            }}
+          >
             {STEPS.map((s, i) => {
               const status = stepStatus[i];
               const isActive = i === step && !isError;
@@ -142,25 +149,51 @@ export default function Onboarding({ onDone }) {
 
               return (
                 <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0',
+                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0',
                   opacity: isPast || isActive ? 1 : 0.3,
+                  borderBottom: i < STEPS.length - 1 ? '1px solid var(--line)' : 'none',
                 }}>
+                  {/* Status circle */}
                   <span style={{
-                    width: 14, height: 14, borderRadius: '50%', display: 'grid', placeItems: 'center',
-                    flexShrink: 0,
+                    width: 18, height: 18, borderRadius: '50%', display: 'grid', placeItems: 'center',
+                    flexShrink: 0, marginTop: 1,
                     background: isFailed ? 'var(--danger)'
                       : (status?.ok) ? 'var(--success)'
                       : isActive ? 'var(--gold)'
                       : 'var(--line-strong)',
-                    color: '#fff', fontSize: 8,
+                    color: '#fff', fontSize: 9, fontWeight: 700,
                   }}>
-                    {isFailed ? '\u2717' : status?.ok ? '\u2713' : isActive ? '\u00b7' : ''}
+                    {isFailed ? '✗' : status?.ok ? '✓' : isActive ? '·' : ''}
                   </span>
-                  <span style={{ color: isPast || isActive ? 'var(--ink)' : 'var(--ink-4)', flex: 1 }}>
-                    {s.label}
-                  </span>
+
+                  {/* Label + sub */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      color: isPast || isActive ? 'var(--ink)' : 'var(--ink-4)',
+                      fontWeight: 500,
+                      lineHeight: 1.3,
+                    }}>
+                      {s.label}
+                    </div>
+                    <div style={{
+                      fontSize: 9,
+                      color: 'var(--ink-4)',
+                      marginTop: 2,
+                      fontFamily: 'var(--mono)',
+                    }}>
+                      {s.sub}
+                    </div>
+                  </div>
+
+                  {/* Status message (right) */}
                   {status?.msg && (
-                    <span style={{ fontSize: 9, color: isFailed ? 'var(--danger)' : 'var(--ink-4)' }}>
+                    <span style={{
+                      fontSize: 9,
+                      color: isFailed ? 'var(--danger)' : 'var(--success)',
+                      fontWeight: 500,
+                      flexShrink: 0,
+                      marginTop: 2,
+                    }}>
                       {status.msg}
                     </span>
                   )}
@@ -194,7 +227,7 @@ export default function Onboarding({ onDone }) {
                 runConnection();
               }}
             >
-              Réessayer
+              Reessayer
             </button>
           )}
         </div>

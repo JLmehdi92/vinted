@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Header from '../components/Header';
-import { IconZap, IconTrash } from '../components/Icons';
+import { IconZap, IconTrash, IconPlus } from '../components/Icons';
 
 export default function EditArticle({ article, onBack, onSave }) {
   const initialPrice = article.price_numeric ?? article.price ?? 0;
@@ -10,8 +10,8 @@ export default function EditArticle({ article, onBack, onSave }) {
   const [desc, setDesc] = useState(article.description || '');
 
   const brand = article.brand_title ?? article.brand ?? '';
-  const size = article.size_title ?? article.size ?? '\u2014';
-  const cat = article.catalog_title ?? article.cat ?? 'Catégorie';
+  const size = article.size_title ?? article.size ?? '—';
+  const cat = article.catalog_title ?? article.cat ?? 'Categorie';
   const views = article.view_count ?? article.views ?? 0;
   const favs = article.favourite_count ?? article.favs ?? 0;
   const photos = article.photos || [];
@@ -60,10 +60,12 @@ export default function EditArticle({ article, onBack, onSave }) {
     });
   };
 
+  const suggestedPrice = Math.max(1, price - 5);
+
   return (
     <>
       <Header
-        title="Éditer l'annonce"
+        title="Editer l'annonce"
         onBack={onBack}
         right={
           <button className="btn btn-sm btn-primary" onClick={handleSave} disabled={saving}>
@@ -73,7 +75,7 @@ export default function EditArticle({ article, onBack, onSave }) {
       />
       <div className="ext-main">
         <div style={{ padding: 14 }}>
-          {/* Photos */}
+          {/* Photos row */}
           <label className="label">Photos &middot; {photos.length}/20</label>
           <div style={{ display: 'flex', gap: 6, marginBottom: 16, overflowX: 'auto' }}>
             {(photos.length > 0 ? photos.slice(0, 4) : [1, 2, 3, 4]).map((p, i) => {
@@ -99,6 +101,7 @@ export default function EditArticle({ article, onBack, onSave }) {
                 </div>
               );
             })}
+            {/* Add photo button */}
             <div
               style={{
                 width: 60,
@@ -109,47 +112,47 @@ export default function EditArticle({ article, onBack, onSave }) {
                 placeItems: 'center',
                 color: 'var(--ink-4)',
                 flexShrink: 0,
-                fontSize: 8,
-                fontFamily: 'var(--mono)',
-                textAlign: 'center',
-                padding: 4,
-                opacity: 0.6,
+                cursor: 'pointer',
+              }}
+              title="Modifier les photos sur Vinted"
+              onClick={() => {
+                if (article.url) window.open(article.url, '_blank');
               }}
             >
-              Modifier sur Vinted
+              <IconPlus />
             </div>
           </div>
 
-          {/* Title */}
+          {/* Title input + counter */}
           <label className="label">Titre</label>
-          <input
-            className="inp"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={80}
-            style={{ marginBottom: 4 }}
-          />
-          <div
-            style={{
+          <div style={{ position: 'relative', marginBottom: 14 }}>
+            <input
+              className="inp"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={80}
+            />
+            <span style={{
+              position: 'absolute',
+              right: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
               fontFamily: 'var(--mono)',
               fontSize: 9,
               color: 'var(--ink-4)',
-              textAlign: 'right',
-              marginBottom: 14,
-            }}
-          >
-            {title.length}/80
+              pointerEvents: 'none',
+            }}>
+              {title.length}/80
+            </span>
           </div>
 
-          {/* Price + Category */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 10,
-              marginBottom: 14,
-            }}
-          >
+          {/* Price + Category — 2-column grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 10,
+            marginBottom: 14,
+          }}>
             <div>
               <label className="label">Prix (&euro;)</label>
               <input
@@ -174,46 +177,56 @@ export default function EditArticle({ article, onBack, onSave }) {
               />
             </div>
             <div>
-              <label className="label">Catégorie</label>
+              <label className="label">Categorie</label>
               <div
+                className="inp"
                 title="Non modifiable"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '8px 10px',
-                  border: '1px solid var(--line-strong)',
-                  borderRadius: 'var(--r)',
-                  background: 'var(--ext-surface)',
-                  fontSize: 12,
                   opacity: 0.7,
+                  cursor: 'default',
                 }}
               >
-                {cat} <span style={{ fontSize: 9, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>(non modifiable)</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat}</span>
+                <span style={{
+                  fontSize: 8,
+                  color: 'var(--ink-4)',
+                  fontFamily: 'var(--mono)',
+                  flexShrink: 0,
+                  marginLeft: 4,
+                }}>LOCK</span>
               </div>
             </div>
           </div>
 
-          {/* Suggestion box */}
+          {/* Suggestion ReVint */}
           <div
+            className="card"
             style={{
-              padding: 10,
+              padding: '10px 12px',
               background: 'var(--gold-wash)',
-              border: '1px solid var(--gold)',
-              borderRadius: 'var(--r)',
+              borderColor: 'var(--gold)',
               marginBottom: 14,
               display: 'flex',
               gap: 8,
               alignItems: 'flex-start',
             }}
           >
-            <div style={{ color: 'var(--gold-deep)', paddingTop: 1 }}>
+            <div style={{ color: 'var(--gold-deep)', paddingTop: 1, flexShrink: 0 }}>
               <IconZap />
             </div>
-            <div style={{ fontSize: 11, flex: 1, color: 'var(--ink-2)' }}>
-              <b>Suggestion ReVint :</b> baissez a {Math.max(1, price - 5)}&euro; pour entrer dans
+            <div style={{ fontSize: 11, flex: 1, color: 'var(--ink-2)', lineHeight: 1.45 }}>
+              <b>Suggestion ReVint :</b> baissez a {suggestedPrice}&euro; pour entrer dans
               le top recherche.{' '}
-              <u style={{ cursor: 'pointer' }} onClick={() => { const np = Math.max(1, price - 5); setPrice(np); setPriceText(String(np)); }}>
+              <u
+                style={{ cursor: 'pointer', color: 'var(--gold-deep)', fontWeight: 600 }}
+                onClick={() => {
+                  setPrice(suggestedPrice);
+                  setPriceText(String(suggestedPrice));
+                }}
+              >
                 Appliquer
               </u>
             </div>
@@ -229,51 +242,69 @@ export default function EditArticle({ article, onBack, onSave }) {
             style={{ marginBottom: 14 }}
           />
 
-          {/* Brand + Size (read-only) */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 10,
-              marginBottom: 14,
-            }}
-          >
+          {/* Brand + Size — 2-column grid (readonly) */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 10,
+            marginBottom: 14,
+          }}>
             <div>
               <label className="label">Marque</label>
-              <input className="inp" value={brand} readOnly title="Défini lors de la création sur Vinted" style={{ opacity: 0.7 }} />
+              <input
+                className="inp"
+                value={brand}
+                readOnly
+                title="Defini lors de la creation sur Vinted"
+                style={{ opacity: 0.7, cursor: 'default' }}
+              />
             </div>
             <div>
               <label className="label">Taille</label>
-              <input className="inp" value={size} readOnly title="Défini lors de la création sur Vinted" style={{ opacity: 0.7 }} />
+              <input
+                className="inp"
+                value={size}
+                readOnly
+                title="Defini lors de la creation sur Vinted"
+                style={{ opacity: 0.7, cursor: 'default' }}
+              />
             </div>
           </div>
 
-          {/* Stats bar */}
-          <div
-            style={{
-              background: 'var(--cream-2)',
-              padding: 12,
-              borderRadius: 'var(--r)',
-              fontFamily: 'var(--mono)',
-              fontSize: 10,
-              color: 'var(--ink-3)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-              <span>PUBLIÉ IL Y A</span>
-              <span className="tabular">{days} JOURS</span>
+          {/* Stats box */}
+          <div style={{
+            background: 'var(--cream-2)',
+            padding: 12,
+            borderRadius: 'var(--r)',
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            color: 'var(--ink-3)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--line)' }}>
+              <span>PUBLIE IL Y A</span>
+              <span className="tabular" style={{ fontWeight: 500, color: 'var(--ink-2)' }}>{days} JOURS</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--line)' }}>
               <span>VUES</span>
-              <span className="tabular">{views}</span>
+              <span className="tabular" style={{ fontWeight: 500, color: 'var(--ink-2)' }}>{views}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
               <span>FAVORIS</span>
-              <span className="tabular">{favs}</span>
+              <span className="tabular" style={{ fontWeight: 500, color: 'var(--ink-2)' }}>{favs}</span>
             </div>
           </div>
+
+          {/* Save error banner */}
           {saveError && (
-            <div style={{ padding: '8px 12px', marginTop: 10, background: 'rgba(184,58,58,0.1)', color: 'var(--danger)', fontSize: 11, textAlign: 'center', borderRadius: 'var(--r)' }}>
+            <div style={{
+              padding: '8px 12px',
+              marginTop: 10,
+              background: 'rgba(184,58,58,0.1)',
+              color: 'var(--danger)',
+              fontSize: 11,
+              textAlign: 'center',
+              borderRadius: 'var(--r)',
+            }}>
               {saveError}
             </div>
           )}

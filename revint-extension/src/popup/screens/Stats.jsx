@@ -1,6 +1,5 @@
 import React from 'react';
 import useStats from '../hooks/useStats';
-import { IconEye, IconHeart } from '../components/Icons';
 
 export default function Stats({ articles }) {
   const { totalViews, totalFavs, topArticles, viewData, deltaPercent, isEstimate } = useStats(articles);
@@ -24,66 +23,54 @@ export default function Stats({ articles }) {
 
   return (
     <div style={{ padding: 14 }}>
-      {/* Period label */}
-      <div
-        style={{
-          fontFamily: 'var(--mono)',
-          fontSize: 10,
-          color: 'var(--ink-4)',
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          marginBottom: 14,
-        }}
-      >
+      {/* ── Period label ── */}
+      <div className="mono" style={{
+        fontSize: 10,
+        color: 'var(--ink-4)',
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        marginBottom: 14,
+      }}>
         14 derniers jours
       </div>
 
-      {/* Bar chart card */}
-      <div
-        style={{
-          background: 'var(--ext-surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 'var(--r)',
-          padding: 14,
+      {/* ── Bar chart card ── */}
+      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
           marginBottom: 14,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'baseline',
-            marginBottom: 14,
-          }}
-        >
+        }}>
           <div>
-            <div
-              style={{
-                fontFamily: 'var(--mono)',
-                fontSize: 9,
-                color: 'var(--ink-4)',
-                letterSpacing: '0.1em',
-              }}
-            >
+            <div className="mono" style={{
+              fontSize: 9,
+              color: 'var(--ink-4)',
+              letterSpacing: '0.1em',
+            }}>
               VUES TOTALES
             </div>
-            <div
-              style={{
-                fontFamily: 'var(--display)',
-                fontWeight: 800,
-                fontSize: 28,
-                letterSpacing: -1.2,
-                lineHeight: 1,
-              }}
-            >
+            <div style={{
+              fontFamily: 'var(--display)',
+              fontWeight: 800,
+              fontSize: 28,
+              letterSpacing: -1.2,
+              lineHeight: 1,
+            }}>
               {displayViews.toLocaleString('fr-FR')}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: deltaPercent !== null && parseFloat(deltaPercent) >= 0 ? 'var(--success)' : 'var(--danger, #c44)' }}>
-              {deltaPercent !== null ? (parseFloat(deltaPercent) >= 0 ? '+' : '') + deltaPercent + '%' : '--'}
+            <div className="mono" style={{
+              fontSize: 10,
+              color: deltaPercent !== null && parseFloat(deltaPercent) >= 0
+                ? 'var(--success)' : 'var(--danger)',
+            }}>
+              {deltaPercent !== null
+                ? (parseFloat(deltaPercent) >= 0 ? '+' : '') + deltaPercent + '%'
+                : '--'}
             </div>
-            <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ink-4)' }}>
+            <div className="mono" style={{ fontSize: 9, color: 'var(--ink-4)' }}>
               vs 14j précédents
             </div>
           </div>
@@ -91,9 +78,12 @@ export default function Stats({ articles }) {
 
         {/* SVG bar chart */}
         {isEstimate ? (
-          <div style={{
-            padding: '20px 8px', textAlign: 'center', fontFamily: 'var(--mono)',
-            fontSize: 10, color: 'var(--ink-4)', letterSpacing: '0.08em',
+          <div className="mono" style={{
+            padding: '20px 8px',
+            textAlign: 'center',
+            fontSize: 10,
+            color: 'var(--ink-4)',
+            letterSpacing: '0.08em',
           }}>
             Accumulez 2+ jours de snapshots pour voir la courbe de vues.
           </div>
@@ -103,6 +93,7 @@ export default function Stats({ articles }) {
               const h = (v / max) * 60;
               const x = i * (300 / data.length);
               const w = 300 / data.length - 2;
+              const last = i === data.length - 1;
               return (
                 <rect
                   key={i}
@@ -110,25 +101,30 @@ export default function Stats({ articles }) {
                   y={70 - h}
                   width={w}
                   height={h}
-                  style={{ fill: i === data.length - 1 ? 'var(--gold)' : 'var(--ext-fg)' }}
+                  fill={last ? '#E8C547' : '#1A1D3A'}
+                  rx={1}
                 />
               );
             })}
-            <line x1="0" y1="70" x2="300" y2="70" style={{ stroke: 'var(--ext-line)' }} />
+            <line x1="0" y1="70" x2="300" y2="70" stroke="var(--ext-line)" strokeWidth="1" />
           </svg>
         )}
       </div>
 
-      {/* Top articles */}
+      {/* ── Top articles ── */}
       <div className="sec-head" style={{ padding: '0 0 8px' }}>
         <div className="sec-title">Top articles</div>
-        <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ink-4)' }}>
-          PAR VUES
-        </span>
+        <span className="mono" style={{ fontSize: 9, color: 'var(--ink-4)' }}>PAR VUES</span>
       </div>
       <div className="card" style={{ marginBottom: 14 }}>
         {displayTop.length === 0 && (
-          <div style={{ padding: '20px 14px', textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)', letterSpacing: '0.08em' }}>
+          <div className="mono" style={{
+            padding: '20px 14px',
+            textAlign: 'center',
+            fontSize: 10,
+            color: 'var(--ink-4)',
+            letterSpacing: '0.08em',
+          }}>
             Aucun article pour le moment
           </div>
         )}
@@ -149,21 +145,22 @@ export default function Stats({ articles }) {
                 display: 'flex',
                 gap: 10,
                 alignItems: 'center',
-                borderBottom: i < displayTop.length - 1 ? '1px solid var(--line)' : 'none',
+                borderBottom: i < displayTop.length - 1 ? '1px solid var(--ext-line)' : 'none',
               }}
             >
-              <div
-                style={{
-                  fontFamily: 'var(--mono)',
-                  fontSize: 11,
-                  color: 'var(--ink-4)',
-                  width: 18,
-                  fontWeight: 500,
-                }}
-              >
+              {/* Number */}
+              <div className="mono" style={{
+                fontSize: 11,
+                color: 'var(--ink-4)',
+                width: 18,
+                fontWeight: 500,
+                flexShrink: 0,
+              }}>
                 {i + 1}
               </div>
-              <div className="art-thumb" style={{ width: 32, height: 32, fontSize: 7 }}>
+
+              {/* Thumbnail */}
+              <div className="art-thumb" style={{ width: 32, height: 32, fontSize: 7, flexShrink: 0 }}>
                 {thumbUrl ? (
                   <img
                     src={thumbUrl}
@@ -174,36 +171,35 @@ export default function Stats({ articles }) {
                   brand.slice(0, 3).toUpperCase()
                 )}
               </div>
-              <div style={{ flex: 1, overflow: 'hidden', fontSize: 11 }}>
-                <div
-                  style={{
-                    fontWeight: 500,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
+
+              {/* Title + stats */}
+              <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                <div style={{
+                  fontWeight: 500,
+                  fontSize: 11,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
                   {title}
                 </div>
-                <div
-                  style={{
-                    fontFamily: 'var(--mono)',
-                    fontSize: 9,
-                    color: 'var(--ink-4)',
-                    marginTop: 2,
-                  }}
-                >
+                <div className="mono" style={{
+                  fontSize: 9,
+                  color: 'var(--ink-4)',
+                  marginTop: 2,
+                }}>
                   {views} vues &middot; {favs} fav
                 </div>
               </div>
-              <div
-                style={{
-                  fontFamily: 'var(--display)',
-                  fontWeight: 700,
-                  fontSize: 14,
-                  letterSpacing: '-0.3px',
-                }}
-              >
+
+              {/* Price */}
+              <div style={{
+                fontFamily: 'var(--display)',
+                fontWeight: 700,
+                fontSize: 14,
+                letterSpacing: '-0.3px',
+                flexShrink: 0,
+              }}>
                 {price}&euro;
               </div>
             </div>
@@ -211,20 +207,18 @@ export default function Stats({ articles }) {
         })}
       </div>
 
-      {/* Conversion funnel */}
+      {/* ── Conversion funnel ── */}
       <div className="sec-head" style={{ padding: '0 0 8px' }}>
         <div className="sec-title">Entonnoir de conversion</div>
       </div>
-      <div
-        style={{
-          background: 'var(--ext-fg)',
-          color: 'var(--ext-bg)',
-          borderRadius: 'var(--r)',
-          padding: 14,
-          fontFamily: 'var(--mono)',
-          fontSize: 11,
-        }}
-      >
+      <div style={{
+        background: 'var(--ext-fg)',
+        color: 'var(--ext-bg)',
+        borderRadius: 'var(--r)',
+        padding: 14,
+        fontFamily: 'var(--mono)',
+        fontSize: 11,
+      }}>
         {funnel.map((r, i) => (
           <div
             key={i}
@@ -235,35 +229,34 @@ export default function Stats({ articles }) {
               padding: '6px 0',
             }}
           >
-            <div
-              style={{
-                width: 70,
-                opacity: 0.6,
-                letterSpacing: '0.08em',
-                fontSize: 9,
-              }}
-            >
+            <div style={{
+              width: 70,
+              opacity: 0.6,
+              letterSpacing: '0.08em',
+              fontSize: 9,
+            }}>
               {r.label}
             </div>
-            <div
-              style={{
-                flex: 1,
-                height: 12,
-                background: 'rgba(250,247,242,0.08)',
-                position: 'relative',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${r.w}%`,
-                  background: i === funnel.length - 1 ? 'var(--gold)' : 'var(--ext-bg)',
-                }}
-              />
+            <div style={{
+              flex: 1,
+              height: 12,
+              background: 'rgba(250,247,242,0.08)',
+              borderRadius: 2,
+              position: 'relative',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${r.w}%`,
+                background: i === funnel.length - 1 ? 'var(--gold)' : 'var(--ext-bg)',
+                borderRadius: 2,
+              }} />
             </div>
             <div style={{ width: 50, textAlign: 'right' }}>
               {r.v}
-              {r.estimated && <div style={{fontSize:8, opacity:0.5, fontStyle:'italic'}}>estimé</div>}
+              {r.estimated && (
+                <div style={{ fontSize: 8, opacity: 0.5, fontStyle: 'italic' }}>estimé</div>
+              )}
             </div>
           </div>
         ))}

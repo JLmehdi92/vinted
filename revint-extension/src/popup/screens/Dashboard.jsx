@@ -11,7 +11,7 @@ function formatDate() {
   ];
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} \u00b7 ${hh}h${mm}`;
+  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} · ${hh}h${mm}`;
 }
 
 
@@ -80,65 +80,65 @@ export default function Dashboard({ user, articles, go }) {
 
   return (
     <div style={{ padding: '14px 14px 16px' }}>
-      {/* Greeting */}
+      {/* ── Greeting ── */}
       <div style={{ marginBottom: 14 }}>
-        <div
-          style={{
-            fontFamily: 'var(--mono)',
-            fontSize: 10,
-            color: 'var(--ext-fg-4)',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            marginBottom: 4,
-          }}
-        >
+        <div className="mono" style={{
+          fontSize: 10,
+          color: 'var(--ink-4)',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          marginBottom: 4,
+        }}>
           {formatDate()}
         </div>
-        <div
-          style={{
-            fontFamily: 'var(--display)',
-            fontWeight: 700,
-            fontSize: 22,
-            letterSpacing: -0.8,
-            lineHeight: 1.15,
-          }}
-        >
+        <div style={{
+          fontFamily: 'var(--display)',
+          fontWeight: 700,
+          fontSize: 22,
+          letterSpacing: -0.8,
+          lineHeight: 1.15,
+        }}>
           Bonjour <em>{login}</em>.
-          <br />
-          <span style={{ color: 'var(--ext-fg-3)' }}>{stats.active} articles en ligne.</span>
+        </div>
+        <div style={{
+          color: 'var(--ink-3)',
+          fontSize: 13,
+          marginTop: 2,
+        }}>
+          {stats.active} articles en ligne.
         </div>
       </div>
 
-      {/* Stats grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
+      {/* ── Stat grid 2×2 ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: 8,
+        marginBottom: 16,
+      }}>
         <StatTile label="Articles actifs" value={stats.active} />
         <StatTile
           label="Vues totales"
           value={stats.views.toLocaleString('fr-FR')}
         />
         <StatTile label="Favoris" value={stats.favs} />
-        <StatTile label="Ventes / mois" value={sales !== null ? sales : '--'} />
+        <StatTile
+          label="Ventes / mois"
+          value={sales !== null ? sales : '--'}
+          delta={sales !== null && sales === 0 ? '—' : undefined}
+        />
       </div>
 
-      {/* Quick actions */}
+      {/* ── Quick actions ── */}
       <div className="sec-head" style={{ padding: '0 0 8px' }}>
         <div className="sec-title">Actions rapides</div>
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: 8,
+        marginBottom: 16,
+      }}>
         <button
           className="btn"
           style={{
@@ -151,11 +151,11 @@ export default function Dashboard({ user, articles, go }) {
           }}
           onClick={() => { if (articles?.selected?.length > 0) go('repost'); else go('articles'); }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--gold-deep)' }}>
+          <div style={{ color: 'var(--gold-deep)' }}>
             <IconBoost />
           </div>
           <div style={{ fontSize: 12, fontWeight: 500 }}>Reposter articles</div>
-          <div style={{ fontSize: 10, color: 'var(--ext-fg-4)', fontFamily: 'var(--mono)' }}>
+          <div className="mono" style={{ fontSize: 10, color: 'var(--ink-4)' }}>
             {articles?.selected?.length || 0} sélectionnés
           </div>
         </button>
@@ -171,69 +171,72 @@ export default function Dashboard({ user, articles, go }) {
           }}
           onClick={() => go('automation')}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--gold-deep)' }}>
+          <div style={{ color: 'var(--gold-deep)' }}>
             <IconZap />
           </div>
           <div style={{ fontSize: 12, fontWeight: 500 }}>Auto-réponses</div>
-          <div style={{ fontSize: 10, color: 'var(--ext-fg-4)', fontFamily: 'var(--mono)' }}>
+          <div className="mono" style={{ fontSize: 10, color: 'var(--ink-4)' }}>
             {autoCount} envoyée{autoCount !== 1 ? 's' : ''}
           </div>
         </button>
       </div>
 
-      {/* Activity feed */}
+      {/* ── Activity feed ── */}
       <div className="sec-head" style={{ padding: '0 0 8px' }}>
-        <div className="sec-title">Activité récente</div>
-        <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ext-fg-4)' }}>RECENT</span>
+        <div className="sec-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Activité récente
+          <span className="chip dot" style={{ fontSize: 8 }}>LIVE</span>
+        </div>
       </div>
       <div className="card" style={{ fontSize: 12 }}>
         {activity.length > 0 ? (
           activity.map((e, i) => (
-          <div
-            key={i}
-            style={{
-              padding: '10px 12px',
-              borderBottom: i < activity.length - 1 ? '1px solid var(--line)' : 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
             <div
+              key={i}
               style={{
-                fontFamily: 'var(--mono)',
-                fontSize: 10,
-                color: 'var(--ext-fg-4)',
-                width: 36,
+                padding: '10px 12px',
+                borderBottom: i < activity.length - 1 ? '1px solid var(--ext-line)' : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
               }}
             >
-              {e.t}
-            </div>
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <div style={{ fontSize: 11, color: 'var(--ext-fg-3)' }}>
-                <b style={{ color: 'var(--ext-fg)', fontWeight: 500 }}>{e.e}</b> · {e.who}
+              <div className="mono" style={{
+                fontSize: 10,
+                color: 'var(--ink-4)',
+                width: 36,
+                flexShrink: 0,
+              }}>
+                {e.t}
               </div>
-              <div
-                style={{
+              <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                  <b style={{ color: 'var(--ext-fg)', fontWeight: 600 }}>{e.e}</b> &middot; {e.who}
+                </div>
+                <div style={{
                   fontSize: 10,
-                  color: 'var(--ext-fg-4)',
+                  color: 'var(--ink-4)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                }}
-              >
-                {e.art}
+                }}>
+                  {e.art}
+                </div>
               </div>
+              {e.auto && (
+                <span className="chip gold" style={{ fontSize: 8, flexShrink: 0 }}>AUTO</span>
+              )}
             </div>
-            {e.auto && (
-              <span className="chip gold" style={{ fontSize: 8 }}>
-                AUTO
-              </span>
-            )}
-          </div>
           ))
         ) : (
-          <div style={{padding: '20px 14px', textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ext-fg-4)', letterSpacing: '0.08em'}}>
+          <div style={{
+            padding: '20px 14px',
+            textAlign: 'center',
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            color: 'var(--ink-4)',
+            letterSpacing: '0.08em',
+          }}>
             Aucune activité récente
           </div>
         )}

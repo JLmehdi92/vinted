@@ -78,6 +78,12 @@ const configs = [
     outfile: 'dist/logout-detector.js',
     format: 'iife',
   },
+  {
+    ...shared,
+    entryPoints: ['src/landing/index.jsx'],
+    outfile: 'dist/landing/index.js',
+    format: 'iife',
+  },
 ];
 
 if (isWatch) {

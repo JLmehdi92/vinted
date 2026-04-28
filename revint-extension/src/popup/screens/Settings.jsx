@@ -16,14 +16,14 @@ const DEFAULT_SETTINGS = {
 };
 
 function formatPlanExpiry(dateStr) {
-  if (!dateStr) return '\u2014';
+  if (!dateStr) return '—';
   try {
     const d = new Date(dateStr);
     const day = d.getDate();
     const months = ['JAN','FEV','MAR','AVR','MAI','JUIN','JUIL','AOUT','SEP','OCT','NOV','DEC'];
     return `${day} ${months[d.getMonth()]}`;
   } catch {
-    return '\u2014';
+    return '—';
   }
 }
 
@@ -59,7 +59,7 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
   const planLabel = profile?.plan === 'pro' ? 'PLAN PRO' : 'PLAN FREE';
   const expiryLabel = profile?.plan_expires_at
     ? `RENOUV. ${formatPlanExpiry(profile.plan_expires_at)}`
-    : '\u2014';
+    : '—';
 
   // --- Reconnect handler ---
   const [reconnecting, setReconnecting] = useState(false);
@@ -91,7 +91,8 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
       <Header title="Paramètres" onBack={onBack} />
       <div className="ext-main">
         <div style={{ padding: 14 }}>
-          {/* Account card */}
+
+          {/* ── Account card ── */}
           <div
             className="card"
             style={{
@@ -102,37 +103,34 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
               gap: 12,
             }}
           >
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                background: 'var(--ext-fg)',
-                borderRadius: '50%',
-                display: 'grid',
-                placeItems: 'center',
-                fontFamily: 'var(--display)',
-                color: 'var(--gold)',
-                fontSize: 20,
-                fontWeight: 900,
-              }}
-            >
+            <div style={{
+              width: 44,
+              height: 44,
+              background: 'var(--ext-fg)',
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              fontFamily: 'var(--display)',
+              color: 'var(--gold)',
+              fontSize: 20,
+              fontWeight: 900,
+              flexShrink: 0,
+            }}>
               {initial}
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 500, fontSize: 13 }}>@{login}</div>
-              <div
-                style={{
-                  fontFamily: 'var(--mono)',
-                  fontSize: 10,
-                  color: 'var(--ink-4)',
-                }}
-              >
+              <div className="mono" style={{ fontSize: 10, color: 'var(--ink-4)' }}>
                 {planLabel} &middot; {expiryLabel}
               </div>
             </div>
-            <span className="chip" style={{ fontSize: 8, opacity: 0.5 }}>
-              Bientôt
-            </span>
+            <button
+              className="btn btn-sm"
+              style={{ flexShrink: 0, fontSize: 10 }}
+              onClick={() => {/* Manage account — coming soon */}}
+            >
+              Gérer
+            </button>
           </div>
 
           {/* ── Préférences ── */}
@@ -141,26 +139,31 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
               Préférences
             </div>
             <div className="card">
-              {/* Langue */}
               <div className="set-row" style={{ borderBottom: '1px solid var(--ext-line)' }}>
                 <div className="set-row-label">Langue</div>
-                <div className="set-row-value" style={{opacity:0.5}}>Français <span style={{fontSize:8}}>(bientôt)</span></div>
+                <div className="set-row-value">
+                  Français
+                  <IconChev />
+                </div>
               </div>
-
-              {/* Devise */}
               <div className="set-row" style={{ borderBottom: '1px solid var(--ext-line)' }}>
                 <div className="set-row-label">Devise</div>
-                <div className="set-row-value" style={{opacity:0.5}}>EUR &euro; <span style={{fontSize:8}}>(bientôt)</span></div>
+                <div className="set-row-value">
+                  EUR &euro;
+                  <IconChev />
+                </div>
               </div>
-
-              {/* Notifications bureau */}
               <div className="set-row" style={{ borderBottom: '1px solid var(--ext-line)' }}>
                 <div className="set-row-label">Notifications bureau</div>
-                <div className="set-row-value" style={{opacity:0.5}}>Bientôt</div>
+                <Toggle on={settings.notifications_enabled} onClick={() => {
+                  setSettings(prev => {
+                    const next = { ...prev, notifications_enabled: !prev.notifications_enabled };
+                    chrome.storage.local.set({ [STORAGE_KEY]: next });
+                    return next;
+                  });
+                }} />
               </div>
-
-              {/* Thème sombre */}
-              <div className="set-row" style={{ borderBottom: 'none' }}>
+              <div className="set-row">
                 <div className="set-row-label">Thème sombre</div>
                 <Toggle on={dark} onClick={onToggleTheme} />
               </div>
@@ -173,7 +176,6 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
               Automatisation
             </div>
             <div className="card">
-              {/* Fenêtre d'activité */}
               <div className="set-row" style={{ borderBottom: '1px solid var(--ext-line)' }}>
                 <div className="set-row-label">Fenêtre d&apos;activité</div>
                 <select
@@ -194,17 +196,19 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
                   <option value="0-24">24h/24</option>
                 </select>
               </div>
-
-              {/* Jours actifs */}
               <div className="set-row" style={{ borderBottom: '1px solid var(--ext-line)' }}>
                 <div className="set-row-label">Jours actifs</div>
-                <div className="set-row-value" style={{opacity:0.5}}>Lun - Dim <span style={{fontSize:8}}>(bientôt)</span></div>
+                <div className="set-row-value">
+                  Lun - Dim
+                  <IconChev />
+                </div>
               </div>
-
-              {/* Limite quotidienne */}
-              <div className="set-row" style={{ borderBottom: 'none' }}>
+              <div className="set-row">
                 <div className="set-row-label">Limite quotidienne</div>
-                <div className="set-row-value" style={{opacity:0.7}}>Voir onglet Auto</div>
+                <div className="set-row-value">
+                  {settings.daily_msg_limit} msg/j
+                  <IconChev />
+                </div>
               </div>
             </div>
           </div>
@@ -215,21 +219,24 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
               Compte Vinted
             </div>
             <div className="card">
-              {/* Session */}
               <div className="set-row" style={{ borderBottom: '1px solid var(--ext-line)' }}>
                 <div className="set-row-label">Session</div>
                 <div className="set-row-value">
-                  {user ? 'Connecté à Vinted' : 'Non connecté'}
+                  {user ? 'Connecté' : 'Non connecté'}
                 </div>
               </div>
-
-              {/* Reconnecter */}
               <div
                 className="set-row"
-                style={{ borderBottom: '1px solid var(--ext-line)', cursor: reconnecting ? 'wait' : 'pointer', opacity: reconnecting ? 0.6 : 1 }}
+                style={{
+                  borderBottom: '1px solid var(--ext-line)',
+                  cursor: reconnecting ? 'wait' : 'pointer',
+                  opacity: reconnecting ? 0.6 : 1,
+                }}
                 onClick={reconnecting ? undefined : handleReconnect}
               >
-                <div className="set-row-label">{reconnecting ? 'Reconnexion...' : 'Reconnecter'}</div>
+                <div className="set-row-label">
+                  {reconnecting ? 'Reconnexion...' : 'Reconnecter'}
+                </div>
                 <div className="set-row-value" style={{ fontSize: 9 }}>
                   {reconnectResult === 'ok' && <span style={{ color: 'var(--success)' }}>Connecté</span>}
                   {reconnectResult === 'fail' && <span style={{ color: 'var(--danger)' }}>Échec</span>}
@@ -237,16 +244,24 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
                 </div>
               </div>
               {reconnectMessage && reconnectResult === 'fail' && (
-                <div style={{ padding: '6px 14px 10px', fontSize: 10, color: 'var(--danger)', borderBottom: '1px solid var(--ext-line)' }}>
+                <div style={{
+                  padding: '6px 14px 10px',
+                  fontSize: 10,
+                  color: 'var(--danger)',
+                  borderBottom: '1px solid var(--ext-line)',
+                }}>
                   {reconnectMessage}
                 </div>
               )}
-
-              {/* Se déconnecter */}
               <div
                 className="set-row"
-                style={{ borderBottom: 'none', cursor: 'pointer' }}
-                onClick={async () => { await supaSignOut(); chrome.storage.local.remove('revint_user'); if (onLogout) onLogout(); else if (onBack) onBack(); }}
+                style={{ cursor: 'pointer' }}
+                onClick={async () => {
+                  await supaSignOut();
+                  chrome.storage.local.remove('revint_user');
+                  if (onLogout) onLogout();
+                  else if (onBack) onBack();
+                }}
               >
                 <div className="set-row-label danger">Se déconnecter</div>
                 <div className="set-row-chev">
@@ -256,17 +271,14 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
             </div>
           </div>
 
-          {/* Version footer */}
-          <div
-            style={{
-              fontFamily: 'var(--mono)',
-              fontSize: 9,
-              color: 'var(--ink-4)',
-              textAlign: 'center',
-              padding: '10px 0',
-              letterSpacing: '0.1em',
-            }}
-          >
+          {/* ── Version footer ── */}
+          <div className="mono" style={{
+            fontSize: 9,
+            color: 'var(--ink-4)',
+            textAlign: 'center',
+            padding: '10px 0',
+            letterSpacing: '0.1em',
+          }}>
             REVINT v{chrome.runtime.getManifest?.()?.version || '1.1.0'}
           </div>
         </div>
