@@ -86,7 +86,9 @@ body {
 .ext-tabs {
   display: flex; padding: 0 10px; background: var(--ext-bg);
   border-bottom: 1px solid var(--ext-line); gap: 2px; flex-shrink: 0;
+  overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;
 }
+.ext-tabs::-webkit-scrollbar { display: none; }
 .ext-tab {
   padding: 10px 10px; font-size: 12px; font-weight: 500; color: var(--ext-fg-4);
   cursor: pointer; border: none; background: none;

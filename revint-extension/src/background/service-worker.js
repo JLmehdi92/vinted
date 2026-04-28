@@ -1,4 +1,10 @@
 import {
+  abortableDelay, DELAYS, isCaptchaError, is2FARequired, isRateLimited,
+  shouldSkipUser, isProblematicBrand, PHOTO_PRESETS, getNextPreset,
+  autoModifyTitle, applyPriceOperation, apiLimiter, messageLimiter,
+} from './anti-detection.js';
+
+import {
   setState, getState, restoreState, refreshCsrf,
   getCurrentUser, getUserItems, getItemDetails,
   updateItem, deleteItem, repostItem, fetchImageAsBlob,

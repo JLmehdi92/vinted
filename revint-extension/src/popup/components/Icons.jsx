@@ -120,6 +120,57 @@ export const IconMoon = (props) => (
   </svg>
 );
 
+export const IconOffer = (props) => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...props}>
+    <path d="M2 8l5-5h7v7l-5 5L2 8z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    <circle cx="11" cy="5" r="1.5" stroke="currentColor" strokeWidth="1.3" />
+  </svg>
+);
+
+export const IconRestock = (props) => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...props}>
+    <path d="M2 8a6 6 0 0111-3M14 8a6 6 0 01-11 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    <path d="M13 2v3h-3M3 14v-3h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconBulk = (props) => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...props}>
+    <rect x="1" y="3" width="6" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    <rect x="9" y="3" width="6" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    <rect x="1" y="10" width="6" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    <rect x="9" y="10" width="6" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+  </svg>
+);
+
+export const IconOrder = (props) => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...props}>
+    <rect x="2" y="1" width="12" height="14" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M5 5h6M5 8h4M5 11h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+);
+
+export const IconInbox = (props) => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...props}>
+    <path d="M2 10l3-3h6l3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="2" y="3" width="12" height="11" rx="1" stroke="currentColor" strokeWidth="1.3" />
+  </svg>
+);
+
+export const IconAccount = (props) => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...props}>
+    <circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.4" />
+    <path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+  </svg>
+);
+
+export const IconShield = (props) => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" {...props}>
+    <path d="M8 1L2 4v4c0 4 2.5 6 6 7 3.5-1 6-3 6-7V4L8 1z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    <path d="M6 8l2 2 3-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 export default {
   IconSearch,
   IconClose,
@@ -140,4 +191,11 @@ export default {
   IconTrash,
   IconSun,
   IconMoon,
+  IconOffer,
+  IconRestock,
+  IconBulk,
+  IconOrder,
+  IconInbox,
+  IconAccount,
+  IconShield,
 };

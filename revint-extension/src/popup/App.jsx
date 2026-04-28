@@ -16,6 +16,10 @@ import Repost from './screens/Repost.jsx';
 import Automation from './screens/Automation.jsx';
 import Stats from './screens/Stats.jsx';
 import Settings from './screens/Settings.jsx';
+import SmartOffers from './screens/SmartOffers.jsx';
+import Restocker from './screens/Restocker.jsx';
+import BulkOps from './screens/BulkOps.jsx';
+import Orders from './screens/Orders.jsx';
 
 // Maps an internal background-task scope to a human-readable French label.
 const BG_ERROR_LABELS = {
@@ -26,6 +30,8 @@ const BG_ERROR_LABELS = {
   'scheduled-repost': 'Repost planifié',
   'snapshot': 'Snapshot stats',
   'daily-stats': 'Sync stats',
+  'smart-offers': 'Smart Offers',
+  'restocker': 'Restocker',
 };
 
 function BackgroundErrorBanner() {
@@ -112,7 +118,7 @@ export default function App() {
       setScreen('edit');
       return;
     }
-    if (['dashboard', 'articles', 'automation', 'stats'].includes(s)) {
+    if (['dashboard', 'articles', 'automation', 'stats', 'offers', 'restocker', 'bulk', 'orders'].includes(s)) {
       setTab(s);
       setScreen('main');
       return;
@@ -216,6 +222,10 @@ export default function App() {
     { id: 'dashboard', label: 'Dash' },
     { id: 'articles', label: 'Articles', badge: articles.articles.length || null },
     { id: 'automation', label: 'Auto' },
+    { id: 'offers', label: 'Offres' },
+    { id: 'restocker', label: 'Restock' },
+    { id: 'bulk', label: 'Bulk' },
+    { id: 'orders', label: 'Ventes' },
     { id: 'stats', label: 'Stats' },
   ];
 
@@ -241,6 +251,10 @@ export default function App() {
         {tab === 'dashboard' && <Dashboard user={user} articles={articles} go={go} />}
         {tab === 'articles' && <Articles articles={articles} go={go} />}
         {tab === 'automation' && <Automation />}
+        {tab === 'offers' && <SmartOffers />}
+        {tab === 'restocker' && <Restocker />}
+        {tab === 'bulk' && <BulkOps articles={articles} />}
+        {tab === 'orders' && <Orders />}
         {tab === 'stats' && <Stats articles={articles.articles} />}
       </div>
       {tab === 'articles' && articles.selected.length > 0 && (
