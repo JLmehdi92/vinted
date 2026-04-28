@@ -3,9 +3,9 @@ import Header from '../components/Header';
 import { IconChev } from '../components/Icons';
 
 const STEPS = [
-  { label: 'Détection session Vinted\u2026' },
-  { label: 'Récupération du profil\u2026' },
-  { label: 'Synchronisation articles\u2026' },
+  { label: 'Détection session Vinted2026', sub: 'cookie _vinted_fr_session' },
+  { label: 'Récupération du profil2026', sub: 'GET /api/v2/users/me' },
+  { label: 'Synchronisation articles2026', sub: 'chargement du dressing' },
 ];
 
 export default function Onboarding({ onDone }) {
