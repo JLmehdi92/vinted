@@ -12,6 +12,9 @@
     "declarativeNetRequest",
     "unlimitedStorage"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; style-src 'self' https://api.fontshare.com; font-src https://api.fontshare.com"
+  },
   "declarative_net_request": {
     "rule_resources": [
       { "id": "rules", "enabled": true, "path": "rules.json" }

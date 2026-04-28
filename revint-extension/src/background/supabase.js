@@ -240,35 +240,31 @@ export async function deleteCloudBackup(backupId) {
 }
 
 // ─── Feature Usage / Credits ────────────────────
+// Atomic upsert — avoids race condition where two concurrent calls both read
+// the same count and only increment by 1 instead of 2.
 export async function incrementFeatureUsage(feature) {
   const userId = await requireUserId();
   const today = new Date().toISOString().split('T')[0];
   const month = today.slice(0, 7);
 
-  const { data: existing } = await supabase
-    .from('feature_usage')
-    .select('id, daily_count, monthly_count')
-    .eq('user_id', userId)
-    .eq('feature', feature)
-    .eq('date', today)
-    .maybeSingle();
+  const { error } = await supabase.rpc('increment_feature_usage', {
+    p_user_id: userId,
+    p_feature: feature,
+    p_date: today,
+    p_month: month,
+  });
 
-  if (existing) {
-    const { error } = await supabase.from('feature_usage').update({
-      daily_count: existing.daily_count + 1,
-      monthly_count: existing.monthly_count + 1,
-    }).eq('id', existing.id);
-    if (error) throw error;
-  } else {
-    const { error } = await supabase.from('feature_usage').insert({
+  if (error) {
+    // Fallback to upsert if RPC doesn't exist yet (migration not applied)
+    const { error: upsertError } = await supabase.from('feature_usage').upsert({
       user_id: userId,
       feature,
       date: today,
       month,
       daily_count: 1,
       monthly_count: 1,
-    });
-    if (error) throw error;
+    }, { onConflict: 'user_id,feature,date' });
+    if (upsertError) throw upsertError;
   }
 }
 

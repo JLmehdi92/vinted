@@ -1,7 +1,6 @@
 import {
-  abortableDelay, DELAYS, isCaptchaError, is2FARequired, isRateLimited,
-  shouldSkipUser, isProblematicBrand, PHOTO_PRESETS, getNextPreset,
-  autoModifyTitle, applyPriceOperation, apiLimiter, messageLimiter,
+  abortableDelay, DELAYS, isCaptchaError, is2FARequired,
+  shouldSkipUser, getNextPreset, autoModifyTitle, applyPriceOperation,
 } from './anti-detection.js';
 
 import {
@@ -169,7 +168,29 @@ async function persistUser(user) {
   });
 }
 
+function validateInput(msg) {
+  if (msg.itemId != null && (typeof msg.itemId !== 'number' || !Number.isFinite(msg.itemId))) {
+    throw new Error('INVALID_INPUT: itemId must be a number');
+  }
+  if (msg.itemIds != null && (!Array.isArray(msg.itemIds) || msg.itemIds.some(id => typeof id !== 'number'))) {
+    throw new Error('INVALID_INPUT: itemIds must be an array of numbers');
+  }
+  if (msg.conversationId != null && typeof msg.conversationId !== 'string' && typeof msg.conversationId !== 'number') {
+    throw new Error('INVALID_INPUT: conversationId must be a string or number');
+  }
+  if (msg.body != null && typeof msg.body !== 'string') {
+    throw new Error('INVALID_INPUT: body must be a string');
+  }
+  if (msg.fields != null && typeof msg.fields !== 'object') {
+    throw new Error('INVALID_INPUT: fields must be an object');
+  }
+  if (msg.when != null && (typeof msg.when !== 'number' || !Number.isFinite(msg.when))) {
+    throw new Error('INVALID_INPUT: when must be a timestamp number');
+  }
+}
+
 async function handleMessage(msg) {
+  validateInput(msg);
   switch (msg.type) {
     case 'revint:getState':
       return getState();
@@ -1023,6 +1044,9 @@ async function processSmartOffersTick() {
       if (lastMsg.entity_type !== 'offer_request_message') continue;
       if (!lastMsg.entity?.price) continue;
 
+      const userCheck = shouldSkipUser(conv.opposite_user, config);
+      if (userCheck.skip) continue;
+
       const offerPrice = parseFloat(typeof lastMsg.entity.price === 'string'
         ? lastMsg.entity.price : lastMsg.entity.price.amount);
       const itemPrice = parseFloat(conv.transaction?.item?.price || 0);
@@ -1068,8 +1092,13 @@ async function processSmartOffersTick() {
       }
 
       repliedSet.add(convKey);
-      await chrome.storage.local.set({ revint_smart_offers_replied: [...repliedSet] });
-      await delay(2000 + Math.random() * 3000);
+      if (repliedSet.size > 2000) {
+        const arr = [...repliedSet];
+        await chrome.storage.local.set({ revint_smart_offers_replied: arr.slice(-1000) });
+      } else {
+        await chrome.storage.local.set({ revint_smart_offers_replied: [...repliedSet] });
+      }
+      await abortableDelay(DELAYS.smartOffer.min, DELAYS.smartOffer.max);
     }
   } catch (e) {
     if (!/NOT_AUTHENTICATED|DATADOME/.test(e.message)) {

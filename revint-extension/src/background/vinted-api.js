@@ -148,7 +148,15 @@ function headers(extra = {}) {
   return h;
 }
 
+import { apiLimiter, messageLimiter } from './anti-detection.js';
+
 async function api(method, path, body = null, retries = 1) {
+  return apiLimiter(async () => {
+    return _apiRaw(method, path, body, retries);
+  });
+}
+
+async function _apiRaw(method, path, body, retries) {
   if (!state.origin || !state.csrf) throw new Error('NOT_AUTHENTICATED');
   const url = `${state.origin}${path}`;
   const opts = {
@@ -546,9 +554,11 @@ export async function getNotifications(page = 1) {
 }
 
 export async function sendMessage(conversationId, body) {
-  return api('POST', `/api/v2/conversations/${conversationId}/replies`, {
-    reply: { body, photo_temp_uuids: null },
-  });
+  return messageLimiter(() =>
+    api('POST', `/api/v2/conversations/${conversationId}/replies`, {
+      reply: { body, photo_temp_uuids: null },
+    })
+  );
 }
 
 export async function getInbox(page = 1) {

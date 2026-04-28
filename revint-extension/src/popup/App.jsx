@@ -21,6 +21,7 @@ import Restocker from './screens/Restocker.jsx';
 import BulkOps from './screens/BulkOps.jsx';
 import Orders from './screens/Orders.jsx';
 import AccountSwitcher from './components/AccountSwitcher.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import InboxManager from './screens/InboxManager.jsx';
 
 // Maps an internal background-task scope to a human-readable French label.
@@ -251,6 +252,7 @@ export default function App() {
       />
       <Tabs current={tab} onChange={setTab} tabs={tabsList} />
       <BackgroundErrorBanner />
+      <ErrorBoundary>
       <div className="ext-main">
         {tab === 'dashboard' && <Dashboard user={user} articles={articles} go={go} />}
         {tab === 'articles' && <Articles articles={articles} go={go} />}
@@ -262,6 +264,7 @@ export default function App() {
         {tab === 'inbox' && <InboxManager />}
         {tab === 'stats' && <Stats articles={articles.articles} />}
       </div>
+      </ErrorBoundary>
       {tab === 'articles' && articles.selected.length > 0 && (
         <div className="ext-footer">
           <div style={{
