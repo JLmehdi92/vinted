@@ -555,7 +555,12 @@ async function handleMessage(msg) {
         try {
           const { item } = await getItemDetails(itemId);
           const oldPrice = item?.price_numeric || parseFloat(item?.price) || 0;
-          const operation = msg.operation || { type: msg.action, value: parseFloat(msg.value) || 0, rounding: msg.rounding };
+          const operation = msg.operation || (() => {
+            let type = msg.action;
+            if (type === 'decrease') type = msg.valueType === 'percent' ? 'percentage_decrease' : 'fixed_decrease';
+            else if (type === 'increase') type = msg.valueType === 'percent' ? 'percentage_increase' : 'fixed_increase';
+            return { type, value: parseFloat(msg.value) || 0, rounding: msg.rounding };
+          })();
           const newPrice = applyPriceOperation(oldPrice, operation);
           await updateItem(itemId, { price: newPrice });
           results.push({ itemId, success: true, oldPrice, newPrice });
@@ -974,7 +979,7 @@ async function processAutoReplyTick() {
   // Backlog mode: filter by time range; Live mode: only new notifications
   const timeRangeHours = {
     'new_only': 0, '2h': 2, '6h': 6, '12h': 12,
-    '1j': 24, '3j': 72, '7j': 168,
+    '1d': 24, '1j': 24, '3d': 72, '3j': 72, '7d': 168, '7j': 168,
   };
   const maxHours = timeRangeHours[config.timeRange] || 0;
   let candidates = favoriteNotifs;
@@ -1102,7 +1107,6 @@ async function processAutoReplyTick() {
     }
 
     // Update all tracking counters atomically
-    const userLogin = (notifier.login || '').toLowerCase();
     repliedIds.add(next.id);
     if (itemId) perItemCount[itemId] = (perItemCount[itemId] || 0) + 1;
     if (userLogin) {
@@ -1399,8 +1403,8 @@ async function processRestockerTick() {
 
       // Wait configured delay before restocking
       const orderTs = order.created_at ? new Date(order.created_at).getTime() : Date.now();
-      const delaySec = config.delayBeforeRestock || 300;
-      if (Date.now() - orderTs < delaySec * 1000) continue;
+      const delayMs = (config.delayBeforeRestock || 5) * 60 * 1000;
+      if (Date.now() - orderTs < delayMs) continue;
 
       try {
         // Apply title modifier before restock (Dotb pattern)

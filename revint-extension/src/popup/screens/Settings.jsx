@@ -267,7 +267,7 @@ export default function Settings({ user, onBack, onLogout, dark, onToggleTheme }
               letterSpacing: '0.1em',
             }}
           >
-            REVINT v1.0.0
+            REVINT v{chrome.runtime.getManifest?.()?.version || '1.1.0'}
           </div>
         </div>
       </div>

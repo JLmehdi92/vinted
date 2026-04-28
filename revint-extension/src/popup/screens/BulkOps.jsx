@@ -31,7 +31,7 @@ const TEXT_ACTIONS = [
 ];
 
 export default function BulkOps({ onBack, articles }) {
-  const [selectedIds, setSelectedIds] = useState([]);
+  const selectedIds = articles?.selected || [];
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
   const [result, setResult] = useState(null);
@@ -46,23 +46,6 @@ export default function BulkOps({ onBack, articles }) {
   const [textField, setTextField] = useState('title');
   const [textAction, setTextAction] = useState('replace');
   const [textValue, setTextValue] = useState('');
-
-  // Load selected items from storage
-  useEffect(() => {
-    chrome.storage.local.get('revint_selected_items').then((res) => {
-      if (res.revint_selected_items) {
-        setSelectedIds(res.revint_selected_items);
-      }
-    }).catch(() => {});
-
-    const listener = (changes) => {
-      if (changes.revint_selected_items) {
-        setSelectedIds(changes.revint_selected_items.newValue || []);
-      }
-    };
-    chrome.storage.onChanged.addListener(listener);
-    return () => chrome.storage.onChanged.removeListener(listener);
-  }, []);
 
   // Listen for bulk operation progress
   useEffect(() => {
@@ -127,7 +110,7 @@ export default function BulkOps({ onBack, articles }) {
     startOp('revint:bulkText', {
       field: textField,
       action: textAction,
-      value: textValue,
+      text: textValue,
     });
   };
 

@@ -576,14 +576,16 @@ export async function getInbox(page = 1) {
 // ─── Notifications v2 (Dotb-style, better for favorites) ────
 // /web/api/notifications gives entry_type which lets us filter favorites (type 20)
 export async function getNotificationsV2(page = 1, perPage = 20) {
-  if (!state.origin) throw new Error('NOT_AUTHENTICATED');
-  const url = `${state.origin}/web/api/notifications/notifications?page=${page}&per_page=${perPage}`;
-  const res = await fetch(url, { credentials: 'include', headers: headers() });
-  if (!res.ok) {
-    if (res.status === 404) return { notifications: [] };
-    throw new Error(`NOTIF_V2_${res.status}`);
-  }
-  return res.json();
+  return apiLimiter(async () => {
+    if (!state.origin) throw new Error('NOT_AUTHENTICATED');
+    const url = `${state.origin}/web/api/notifications/notifications?page=${page}&per_page=${perPage}`;
+    const res = await fetch(url, { credentials: 'include', headers: headers() });
+    if (!res.ok) {
+      if (res.status === 404) return { notifications: [] };
+      throw new Error(`NOTIF_V2_${res.status}`);
+    }
+    return res.json();
+  });
 }
 
 // ─── Follow / Unfollow ──────────────────────────────
