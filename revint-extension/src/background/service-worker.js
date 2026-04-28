@@ -1,6 +1,7 @@
 import {
-  abortableDelay, DELAYS, isCaptchaError, is2FARequired,
+  abortableDelay, DELAYS, isCaptchaError, is2FARequired, isRateLimited,
   shouldSkipUser, getNextPreset, autoModifyTitle, applyPriceOperation,
+  isProblematicBrand,
 } from './anti-detection.js';
 
 import {
@@ -10,7 +11,7 @@ import {
   getNotifications, sendMessage, getInbox, delay,
   withKeyMutex,
   getConversation, acceptOffer, rejectOffer, sendCounterOffer,
-  sendDiscountOffer,
+  sendDiscountOffer, publishDraft,
   loadAccounts, getAccounts, saveAccount, removeAccount, switchAccount,
   getNotificationsV2, toggleFollow, getFollowers, getFollowing,
   setItemHidden, markConversationRead, deleteConversation,
@@ -501,15 +502,30 @@ async function handleMessage(msg) {
       return getFollowing(msg.userId, msg.page || 1);
 
     case 'revint:bulkFollow': {
+      const st = getState();
+      if (!st.userId) throw new Error('NOT_CONNECTED');
       const results = [];
-      for (const userId of msg.userIds) {
+      let userIds = msg.userIds || [];
+
+      if (msg.action === 'followBack') {
+        const followersData = await getFollowers(st.userId, 1);
+        const followers = followersData?.users || followersData?.followers || [];
+        const followingData = await getFollowing(st.userId, 1);
+        const following = new Set((followingData?.users || followingData?.followed_users || []).map(u => u.id));
+        userIds = followers.filter(u => !following.has(u.id)).map(u => u.id);
+      } else if (msg.action === 'unfollowAll') {
+        const followingData = await getFollowing(st.userId, 1);
+        userIds = (followingData?.users || followingData?.followed_users || []).map(u => u.id);
+      }
+
+      for (const userId of userIds) {
         try {
           await toggleFollow(userId);
           results.push({ userId, success: true });
         } catch (e) {
           results.push({ userId, success: false, error: e.message });
         }
-        await delay(3000 + Math.random() * 5000);
+        await delay(5000 + Math.random() * 5000);
       }
       return { results };
     }
@@ -539,7 +555,8 @@ async function handleMessage(msg) {
         try {
           const { item } = await getItemDetails(itemId);
           const oldPrice = item?.price_numeric || parseFloat(item?.price) || 0;
-          const newPrice = applyPriceOperation(oldPrice, msg.operation);
+          const operation = msg.operation || { type: msg.action, value: parseFloat(msg.value) || 0, rounding: msg.rounding };
+          const newPrice = applyPriceOperation(oldPrice, operation);
           await updateItem(itemId, { price: newPrice });
           results.push({ itemId, success: true, oldPrice, newPrice });
         } catch (e) {
@@ -577,6 +594,70 @@ async function handleMessage(msg) {
 
     case 'revint:deleteConversation':
       return deleteConversation(msg.conversationId);
+
+    case 'revint:bulkMarkRead': {
+      const results = [];
+      for (const convId of (msg.conversationIds || [])) {
+        try {
+          await markConversationRead(convId);
+          results.push({ convId, success: true });
+        } catch (e) {
+          results.push({ convId, success: false, error: e.message });
+        }
+        await delay(500 + Math.random() * 500);
+      }
+      return { results };
+    }
+
+    // ─── Bulk delete items ────────────────────────────
+    case 'revint:bulkDelete': {
+      const results = [];
+      for (const itemId of (msg.itemIds || [])) {
+        try {
+          await setItemHidden(itemId, true);
+          await delay(400 + Math.random() * 400);
+          await deleteItem(itemId);
+          results.push({ itemId, success: true });
+        } catch (e) {
+          results.push({ itemId, success: false, error: e.message });
+        }
+        await delay(2000 + Math.random() * 3000);
+      }
+      return { results };
+    }
+
+    // ─── Bulk publish drafts ──────────────────────────
+    case 'revint:bulkPublish': {
+      const results = [];
+      for (const draftId of (msg.draftIds || [])) {
+        try {
+          await publishDraft(draftId);
+          results.push({ draftId, success: true });
+        } catch (e) {
+          results.push({ draftId, success: false, error: e.message });
+        }
+        await delay(2000 + Math.random() * 3000);
+      }
+      return { results };
+    }
+
+    // ─── Auto-feedback on orders ──────────────────────
+    case 'revint:bulkFeedback': {
+      const results = [];
+      for (const order of (msg.orders || [])) {
+        try {
+          await leaveFeedback(order.transactionId, order.rating || 5, order.feedback || '');
+          if (order.extraMessage && order.conversationId) {
+            await sendMessage(order.conversationId, order.extraMessage.replace(/@username/g, order.buyerLogin || ''));
+          }
+          results.push({ transactionId: order.transactionId, success: true });
+        } catch (e) {
+          results.push({ transactionId: order.transactionId, success: false, error: e.message });
+        }
+        await delay(3000 + Math.random() * 5000);
+      }
+      return { results };
+    }
 
     // ─── Orders / Transactions ────────────────────────
     case 'revint:getOrders':
@@ -651,7 +732,13 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     else if (alarm.name === 'revint:restockerTick') await processRestockerTick();
   } catch (e) {
     console.error('[ReVint] alarm handler error:', alarm.name, e);
-    recordBackgroundError(alarm.name, e);
+    if (is2FARequired(e)) {
+      recordBackgroundError(alarm.name, { message: '2FA requis — créez un brouillon sur Vinted pour vérifier.' });
+    } else if (isCaptchaError(e)) {
+      recordBackgroundError(alarm.name, { message: 'CAPTCHA détecté — ouvrez Vinted et résolvez-le.' });
+    } else {
+      recordBackgroundError(alarm.name, e);
+    }
   }
 });
 
@@ -678,6 +765,15 @@ async function processRepostBatchTick() {
   const startTime = Date.now();
   let result;
   try {
+    // Dotb: warn about problematic brands (logged, not blocking)
+    try {
+      const { item: checkItem } = await getItemDetails(itemId);
+      const brandName = checkItem?.brand_title || checkItem?.brand || '';
+      if (isProblematicBrand(brandName)) {
+        console.warn(`[ReVint] Problematic brand detected: ${brandName} — use photo modifications to avoid duplicate strike`);
+      }
+    } catch { /* non-blocking check */ }
+
     // Apply title modifier + price reduction if configured
     if (batch.titleModifier || batch.priceReduction) {
       try {
@@ -1157,8 +1253,14 @@ async function processSmartOffersTick() {
       const userCheck = shouldSkipUser(conv.opposite_user, config);
       if (userCheck.skip) continue;
 
+      // Dotb pattern: wait at least 30s before responding to look human
       const offerAge = (Date.now() / 1000) - (lastMsg.created_at_ts || 0);
-      if (offerAge < 30) continue;
+      if (offerAge < 30) {
+        // Schedule a re-check after the remaining wait time + random jitter
+        const waitMs = (30 - offerAge) * 1000 + Math.random() * 5000;
+        chrome.alarms.create('revint:smartOffersTick', { when: Date.now() + waitMs });
+        return;
+      }
 
       const offerPrice = parseFloat(typeof lastMsg.entity.price === 'string'
         ? lastMsg.entity.price : lastMsg.entity.price.amount);
@@ -1241,12 +1343,25 @@ async function processRestockerTick() {
 
       if (!backup?.item) { processedIds.add(txId); continue; }
 
+      // Dotb shouldRestock() validation: check if item is already active/hidden/draft
+      try {
+        const { items } = await getUserItems(st.userId, 1, 96);
+        const existingActive = items.some(it =>
+          it.title === backup.item.title && (it.status === 'active' || it.is_visible)
+        );
+        if (existingActive) { processedIds.add(txId); continue; }
+      } catch { /* if check fails, proceed with restock anyway */ }
+
       // Wait configured delay before restocking
       const orderTs = order.created_at ? new Date(order.created_at).getTime() : Date.now();
       const delaySec = config.delayBeforeRestock || 300;
       if (Date.now() - orderTs < delaySec * 1000) continue;
 
       try {
+        // Apply title modifier before restock (Dotb pattern)
+        if (backup.item.title) {
+          backup.item.title = autoModifyTitle(backup.item.title);
+        }
         const result = await repostItem(itemId);
         processedIds.add(txId);
         logRepost({

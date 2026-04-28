@@ -148,7 +148,7 @@ function headers(extra = {}) {
   return h;
 }
 
-import { apiLimiter, messageLimiter } from './anti-detection.js';
+import { apiLimiter, messageLimiter, photoLimiter, getNextPreset, isProblematicBrand, autoModifyTitle as _autoModifyTitle, applyPriceOperation as _applyPriceOperation } from './anti-detection.js';
 
 async function api(method, path, body = null, retries = 1) {
   return apiLimiter(async () => {
@@ -425,6 +425,11 @@ export async function repostItem(itemId, onProgress) {
 
   // Upload photos — track each successful upload so we can best-effort cleanup
   // if a later step fails, instead of leaving them stranded on Vinted.
+  // Determine photo preset for this repost (Dotb: cyclic rotation through 26 presets)
+  const { revint_last_preset: lastPresetKey } = await chrome.storage.local.get('revint_last_preset');
+  const preset = getNextPreset(lastPresetKey || null);
+  await chrome.storage.local.set({ revint_last_preset: preset.key });
+
   const newPhotos = [];
   try {
     for (let i = 0; i < (item.photos || []).length; i++) {
@@ -432,9 +437,12 @@ export async function repostItem(itemId, onProgress) {
       const url = photo.full_size_url || photo.url;
       if (!url) continue;
       if (onProgress) onProgress('photo', itemId, i + 1, item.photos.length);
-      const blob = await fetchImageAsBlob(url);
-      const transformedBlob = await transformImage(blob);
-      const uploaded = await uploadPhoto(transformedBlob);
+      const blob = await photoLimiter(async () => {
+        const raw = await fetchImageAsBlob(url);
+        const transformed = await transformImageIterative(raw);
+        return transformed;
+      });
+      const uploaded = await uploadPhotoWithRetry(blob);
       newPhotos.push({ id: uploaded.id, orientation: photo.orientation || 0 });
       await delay(1500 + Math.random() * 2500);
     }
