@@ -519,6 +519,111 @@ export async function getInbox(page = 1) {
   return api('GET', `/api/v2/inbox?page=${page}&per_page=20`);
 }
 
+// ─── Conversations ──────────────────────────────────
+export async function getConversation(conversationId) {
+  return api('GET', `/api/v2/conversations/${conversationId}`);
+}
+
+// ─── Offer management ───────────────────────────────
+export async function acceptOffer(transactionId, offerId) {
+  return api('POST', `/api/v2/transactions/${transactionId}/offer_requests/${offerId}/accept`);
+}
+
+export async function rejectOffer(transactionId, offerId) {
+  return api('POST', `/api/v2/transactions/${transactionId}/offer_requests/${offerId}/reject`);
+}
+
+export async function sendCounterOffer(transactionId, price) {
+  return api('POST', `/api/v2/transactions/${transactionId}/offers`, { offer: { price } });
+}
+
+// ─── Discount offers (auto-reply feature) ───────────
+// Send a price discount directly on an item for a specific buyer
+export async function sendDiscountOffer(itemId, buyerUserId, discountedPrice) {
+  return api('POST', `/api/v2/items/${itemId}/discount`, {
+    discount: { buyer_id: buyerUserId, price: discountedPrice },
+  });
+}
+
+// ─── Photo upload with CSRF retry ───────────────────
+// Vindy-style: on 401 during upload, refresh CSRF and retry up to 3 times
+export async function uploadPhotoWithRetry(blob, filename = 'photo.jpg', maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await uploadPhoto(blob, filename);
+    } catch (e) {
+      if (/PHOTO_UPLOAD_401/.test(e.message) && attempt < maxRetries - 1) {
+        console.warn(`[ReVint] Photo upload 401, refreshing CSRF (attempt ${attempt + 1}/${maxRetries})`);
+        await refreshCsrf(state.origin);
+        await delay(2000 + attempt * 1000);
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+// ─── Enhanced anti-duplicate: iterative image comparison ───
+// Compare two images pixel-by-pixel at a reduced resolution (100x100)
+// Returns similarity score 0-1 (1 = identical)
+async function compareImages(blob1, blob2) {
+  const [bmp1, bmp2] = await Promise.all([createImageBitmap(blob1), createImageBitmap(blob2)]);
+  const size = 100;
+  const c1 = new OffscreenCanvas(size, size);
+  const c2 = new OffscreenCanvas(size, size);
+  const ctx1 = c1.getContext('2d');
+  const ctx2 = c2.getContext('2d');
+  ctx1.drawImage(bmp1, 0, 0, size, size);
+  ctx2.drawImage(bmp2, 0, 0, size, size);
+  bmp1.close(); bmp2.close();
+
+  const d1 = ctx1.getImageData(0, 0, size, size).data;
+  const d2 = ctx2.getImageData(0, 0, size, size).data;
+  let matching = 0;
+  const total = size * size;
+  for (let i = 0; i < d1.length; i += 4) {
+    const diff = Math.abs(d1[i] - d2[i]) + Math.abs(d1[i+1] - d2[i+1]) + Math.abs(d1[i+2] - d2[i+2]);
+    if (diff < 45) matching++;
+  }
+  return matching / total;
+}
+
+// Add a noisy border around the image — samples border pixels and adds
+// random color variation, making the image structurally different.
+async function addNoisyBorder(ctx, w, h, borderWidth) {
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (x < borderWidth || x >= w - borderWidth || y < borderWidth || y >= h - borderWidth) {
+        const idx = (y * w + x) * 4;
+        data[idx]   = Math.min(255, Math.max(0, data[idx]   + Math.floor(Math.random() * 30) - 15));
+        data[idx+1] = Math.min(255, Math.max(0, data[idx+1] + Math.floor(Math.random() * 30) - 15));
+        data[idx+2] = Math.min(255, Math.max(0, data[idx+2] + Math.floor(Math.random() * 30) - 15));
+      }
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// Iteratively alter an image until its similarity to the original drops
+// below the target threshold. Falls back to a single transform if
+// OffscreenCanvas isn't available (shouldn't happen in MV3 SW).
+export async function transformImageIterative(blob, maxAttempts = 8, targetSimilarity = 0.82) {
+  let current = blob;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const altered = await transformImage(current);
+    try {
+      const similarity = await compareImages(blob, altered);
+      if (similarity < targetSimilarity) return altered;
+      current = altered;
+    } catch {
+      return altered;
+    }
+  }
+  return current;
+}
+
 // ─── Helpers ─────────────────────────────────────────
 export function delay(ms) {
   return new Promise(r => setTimeout(r, ms));

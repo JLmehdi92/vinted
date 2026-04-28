@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ReVint — Assistant Vinted",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Repost, auto-reponse, edition en lot pour vendeurs Vinted.",
   "permissions": [
     "storage",
@@ -9,8 +9,15 @@
     "webRequest",
     "cookies",
     "tabs",
-    "notifications"
+    "notifications",
+    "declarativeNetRequest",
+    "unlimitedStorage"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "rules", "enabled": true, "path": "rules.json" }
+    ]
+  },
   "host_permissions": [
     "https://www.vinted.fr/*",
     "https://www.vinted.be/*",
@@ -23,6 +30,18 @@
     "https://www.vinted.lt/*",
     "https://www.vinted.co.uk/*",
     "https://www.vinted.com/*",
+    "https://www.vinted.lu/*",
+    "https://www.vinted.at/*",
+    "https://www.vinted.cz/*",
+    "https://www.vinted.sk/*",
+    "https://www.vinted.se/*",
+    "https://www.vinted.hu/*",
+    "https://www.vinted.ro/*",
+    "https://www.vinted.dk/*",
+    "https://www.vinted.fi/*",
+    "https://www.vinted.hr/*",
+    "https://www.vinted.gr/*",
+    "https://www.vinted.net/*",
     "https://images1.vinted.net/*",
     "https://images.vinted.net/*",
     "https://images1.vinted.com/*",
@@ -52,7 +71,19 @@
         "https://www.vinted.pl/*",
         "https://www.vinted.lt/*",
         "https://www.vinted.co.uk/*",
-        "https://www.vinted.com/*"
+        "https://www.vinted.com/*",
+        "https://www.vinted.lu/*",
+        "https://www.vinted.at/*",
+        "https://www.vinted.cz/*",
+        "https://www.vinted.sk/*",
+        "https://www.vinted.se/*",
+        "https://www.vinted.hu/*",
+        "https://www.vinted.ro/*",
+        "https://www.vinted.dk/*",
+        "https://www.vinted.fi/*",
+        "https://www.vinted.hr/*",
+        "https://www.vinted.gr/*",
+        "https://www.vinted.net/*"
       ],
       "js": ["dist/content.js", "dist/widget.js"],
       "run_at": "document_idle"
@@ -69,7 +100,19 @@
         "https://www.vinted.pl/items/*",
         "https://www.vinted.lt/items/*",
         "https://www.vinted.co.uk/items/*",
-        "https://www.vinted.com/items/*"
+        "https://www.vinted.com/items/*",
+        "https://www.vinted.lu/items/*",
+        "https://www.vinted.at/items/*",
+        "https://www.vinted.cz/items/*",
+        "https://www.vinted.sk/items/*",
+        "https://www.vinted.se/items/*",
+        "https://www.vinted.hu/items/*",
+        "https://www.vinted.ro/items/*",
+        "https://www.vinted.dk/items/*",
+        "https://www.vinted.fi/items/*",
+        "https://www.vinted.hr/items/*",
+        "https://www.vinted.gr/items/*",
+        "https://www.vinted.net/items/*"
       ],
       "js": ["dist/sell-similar-button.js"],
       "run_at": "document_idle"
@@ -86,7 +129,19 @@
         "https://www.vinted.pl/items/new*",
         "https://www.vinted.lt/items/new*",
         "https://www.vinted.co.uk/items/new*",
-        "https://www.vinted.com/items/new*"
+        "https://www.vinted.com/items/new*",
+        "https://www.vinted.lu/items/new*",
+        "https://www.vinted.at/items/new*",
+        "https://www.vinted.cz/items/new*",
+        "https://www.vinted.sk/items/new*",
+        "https://www.vinted.se/items/new*",
+        "https://www.vinted.hu/items/new*",
+        "https://www.vinted.ro/items/new*",
+        "https://www.vinted.dk/items/new*",
+        "https://www.vinted.fi/items/new*",
+        "https://www.vinted.hr/items/new*",
+        "https://www.vinted.gr/items/new*",
+        "https://www.vinted.net/items/new*"
       ],
       "js": ["dist/form-filler-bridge.js"],
       "run_at": "document_idle"
@@ -103,7 +158,19 @@
         "https://www.vinted.pl/items/new*",
         "https://www.vinted.lt/items/new*",
         "https://www.vinted.co.uk/items/new*",
-        "https://www.vinted.com/items/new*"
+        "https://www.vinted.com/items/new*",
+        "https://www.vinted.lu/items/new*",
+        "https://www.vinted.at/items/new*",
+        "https://www.vinted.cz/items/new*",
+        "https://www.vinted.sk/items/new*",
+        "https://www.vinted.se/items/new*",
+        "https://www.vinted.hu/items/new*",
+        "https://www.vinted.ro/items/new*",
+        "https://www.vinted.dk/items/new*",
+        "https://www.vinted.fi/items/new*",
+        "https://www.vinted.hr/items/new*",
+        "https://www.vinted.gr/items/new*",
+        "https://www.vinted.net/items/new*"
       ],
       "js": ["dist/form-filler.js"],
       "world": "MAIN",

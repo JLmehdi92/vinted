@@ -194,6 +194,112 @@ export async function saveTemplate({ id, name, content, isDefault }) {
   return data;
 }
 
+// ─── Cloud Backup (before repost) ────────────────
+export async function backupItemToCloud(itemData) {
+  const userId = await requireUserId();
+  const { data, error } = await supabase.from('item_backups').upsert({
+    user_id: userId,
+    vinted_item_id: itemData.id,
+    title: itemData.title,
+    description: itemData.description,
+    price: itemData.price_numeric || parseFloat(itemData.price) || 0,
+    currency: itemData.price_currency || 'EUR',
+    brand: itemData.brand_title || itemData.brand || '',
+    size_id: itemData.size_id,
+    catalog_id: itemData.catalog_id,
+    status_id: itemData.status_id,
+    color_ids: itemData.color_ids || [],
+    photo_urls: (itemData.photos || []).map(p => p.full_size_url || p.url).filter(Boolean),
+    full_payload: itemData,
+  }, { onConflict: 'user_id,vinted_item_id' }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getCloudBackups(limit = 50) {
+  const userId = await requireUserId().catch(() => null);
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('item_backups')
+    .select('id, vinted_item_id, title, price, currency, brand, photo_urls, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function deleteCloudBackup(backupId) {
+  const userId = await requireUserId();
+  const { error } = await supabase
+    .from('item_backups')
+    .delete()
+    .eq('id', backupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+// ─── Feature Usage / Credits ────────────────────
+export async function incrementFeatureUsage(feature) {
+  const userId = await requireUserId();
+  const today = new Date().toISOString().split('T')[0];
+  const month = today.slice(0, 7);
+
+  const { data: existing } = await supabase
+    .from('feature_usage')
+    .select('id, daily_count, monthly_count')
+    .eq('user_id', userId)
+    .eq('feature', feature)
+    .eq('date', today)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase.from('feature_usage').update({
+      daily_count: existing.daily_count + 1,
+      monthly_count: existing.monthly_count + 1,
+    }).eq('id', existing.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('feature_usage').insert({
+      user_id: userId,
+      feature,
+      date: today,
+      month,
+      daily_count: 1,
+      monthly_count: 1,
+    });
+    if (error) throw error;
+  }
+}
+
+export async function getFeatureUsage(feature) {
+  const userId = await requireUserId().catch(() => null);
+  if (!userId) return { daily: 0, monthly: 0 };
+  const today = new Date().toISOString().split('T')[0];
+  const month = today.slice(0, 7);
+
+  const { data } = await supabase
+    .from('feature_usage')
+    .select('daily_count, monthly_count')
+    .eq('user_id', userId)
+    .eq('feature', feature)
+    .eq('date', today)
+    .maybeSingle();
+
+  return { daily: data?.daily_count || 0, monthly: data?.monthly_count || 0 };
+}
+
+export async function getFeatureLimits() {
+  const userId = await requireUserId().catch(() => null);
+  if (!userId) return null;
+  const { data } = await supabase
+    .from('profiles')
+    .select('plan, daily_repost_limit, daily_message_limit, monthly_repost_limit')
+    .eq('id', userId)
+    .single();
+  return data;
+}
+
 // ─── Auth helpers ────────────────────────────────
 export async function signUp(email, password) {
   const { data, error } = await supabase.auth.signUp({ email, password });

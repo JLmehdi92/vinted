@@ -4,6 +4,8 @@ import {
   updateItem, deleteItem, repostItem, fetchImageAsBlob,
   getNotifications, sendMessage, getInbox, delay,
   withKeyMutex,
+  getConversation, acceptOffer, rejectOffer, sendCounterOffer,
+  sendDiscountOffer, uploadPhotoWithRetry, transformImageIterative,
 } from './vinted-api.js';
 
 import {
@@ -13,6 +15,8 @@ import {
   logAutoMessage, getAutoMessageLogs,
   upsertDailyStats, getDailyStats,
   getTemplates, saveTemplate,
+  backupItemToCloud, getCloudBackups, deleteCloudBackup,
+  incrementFeatureUsage, getFeatureUsage, getFeatureLimits,
 } from './supabase.js';
 
 // ─── Restore state on wake ──────────────────────────
@@ -45,7 +49,13 @@ const vintedApiPatterns = [
   'https://www.vinted.de/api/*', 'https://www.vinted.nl/api/*',
   'https://www.vinted.pt/api/*', 'https://www.vinted.pl/api/*',
   'https://www.vinted.lt/api/*', 'https://www.vinted.co.uk/api/*',
-  'https://www.vinted.com/api/*',
+  'https://www.vinted.com/api/*', 'https://www.vinted.lu/api/*',
+  'https://www.vinted.at/api/*', 'https://www.vinted.cz/api/*',
+  'https://www.vinted.sk/api/*', 'https://www.vinted.se/api/*',
+  'https://www.vinted.hu/api/*', 'https://www.vinted.ro/api/*',
+  'https://www.vinted.dk/api/*', 'https://www.vinted.fi/api/*',
+  'https://www.vinted.hr/api/*', 'https://www.vinted.gr/api/*',
+  'https://www.vinted.net/api/*',
 ];
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
@@ -91,7 +101,11 @@ async function ensureConnectedUser() {
         'https://www.vinted.fr/*', 'https://www.vinted.be/*', 'https://www.vinted.es/*',
         'https://www.vinted.it/*', 'https://www.vinted.de/*', 'https://www.vinted.nl/*',
         'https://www.vinted.pt/*', 'https://www.vinted.pl/*', 'https://www.vinted.lt/*',
-        'https://www.vinted.co.uk/*', 'https://www.vinted.com/*',
+        'https://www.vinted.co.uk/*', 'https://www.vinted.com/*', 'https://www.vinted.lu/*',
+        'https://www.vinted.at/*', 'https://www.vinted.cz/*', 'https://www.vinted.sk/*',
+        'https://www.vinted.se/*', 'https://www.vinted.hu/*', 'https://www.vinted.ro/*',
+        'https://www.vinted.dk/*', 'https://www.vinted.fi/*', 'https://www.vinted.hr/*',
+        'https://www.vinted.gr/*', 'https://www.vinted.net/*',
       ] });
       if (tabs.length > 0) {
         const origin = new URL(tabs[0].url).origin;
@@ -336,6 +350,55 @@ async function handleMessage(msg) {
       return { ok: true };
     }
 
+    // ─── Conversations ────────────────────────────────
+    case 'revint:getConversation':
+      return getConversation(msg.conversationId);
+
+    // ─── Offer management ─────────────────────────────
+    case 'revint:acceptOffer':
+      return acceptOffer(msg.transactionId, msg.offerId);
+
+    case 'revint:rejectOffer':
+      return rejectOffer(msg.transactionId, msg.offerId);
+
+    case 'revint:counterOffer':
+      return sendCounterOffer(msg.transactionId, msg.price);
+
+    case 'revint:sendDiscount':
+      return sendDiscountOffer(msg.itemId, msg.buyerUserId, msg.price);
+
+    // ─── Cloud backup ─────────────────────────────────
+    case 'revint:backupToCloud': {
+      const backup = await backupItemToCloud(msg.itemData);
+      return { ok: true, backup };
+    }
+
+    case 'revint:getCloudBackups': {
+      const backups = await getCloudBackups(msg.limit);
+      return { backups };
+    }
+
+    case 'revint:deleteCloudBackup': {
+      await deleteCloudBackup(msg.backupId);
+      return { ok: true };
+    }
+
+    // ─── Feature usage / credits ──────────────────────
+    case 'revint:incrementUsage': {
+      await incrementFeatureUsage(msg.feature);
+      return { ok: true };
+    }
+
+    case 'revint:getUsage': {
+      const usage = await getFeatureUsage(msg.feature);
+      return usage;
+    }
+
+    case 'revint:getFeatureLimits': {
+      const limits = await getFeatureLimits();
+      return { limits };
+    }
+
     default:
       throw new Error(`UNKNOWN_MSG: ${msg.type}`);
   }
@@ -355,6 +418,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     else if (alarm.name === 'revint:scheduledRepost') await processScheduledRepostTick();
     else if (alarm.name === 'revint:batchTick') await processRepostBatchTick();
     else if (alarm.name === 'revint:bulkEditTick') await processBulkEditTick();
+    else if (alarm.name === 'revint:pendingDeletions') await processPendingDeletions();
   } catch (e) {
     console.error('[ReVint] alarm handler error:', alarm.name, e);
     recordBackgroundError(alarm.name, e);
@@ -612,14 +676,36 @@ async function processAutoReplyTick() {
   let message = config.template || '';
   const name = extractName(next.body);
   message = resolveVariations(message);
+  const discountText = config.sendDiscount && config.discountPercent > 0
+    ? `-${config.discountPercent}%` : '';
   message = message
     .replace(/\{\{prenom\}\}/g, name || '')
     .replace(/\{\{article\}\}/g, itemTitle)
     .replace(/\{\{prix\}\}/g, itemPrice)
-    .replace(/\{\{marque\}\}/g, itemBrand);
+    .replace(/\{\{marque\}\}/g, itemBrand)
+    .replace(/\{\{reduction\}\}/g, discountText);
 
   try {
     await sendMessage(match[1], message);
+
+    // Auto-discount: optionally send a price reduction offer to the buyer
+    if (config.sendDiscount && config.discountPercent > 0 && itemId) {
+      try {
+        const { item: freshItem } = await getItemDetails(parseInt(itemId));
+        const originalPrice = freshItem?.price_numeric || parseFloat(freshItem?.price) || 0;
+        if (originalPrice > 0) {
+          const discountedPrice = +(originalPrice * (1 - config.discountPercent / 100)).toFixed(2);
+          // Extract buyer user ID from notification context if available
+          const buyerIdMatch = next.initiator?.id || next.subject?.id;
+          if (buyerIdMatch) {
+            await sendDiscountOffer(parseInt(itemId), buyerIdMatch, discountedPrice);
+          }
+        }
+      } catch (discErr) {
+        console.warn('[ReVint] Auto-discount failed (non-blocking):', discErr.message);
+      }
+    }
+
     repliedIds.add(next.id);
     await withKeyMutex('revint_auto_reply_gates', async () => {
       const { revint_auto_reply_daily: cur, revint_msg_hourly: hourly } =
@@ -747,10 +833,29 @@ function extractName(html) {
 }
 
 // ─── Install / startup ──────────────────────────────
+// Retry pending item deletions that failed during repost
+async function processPendingDeletions() {
+  const st = getState();
+  if (!st.csrf || !st.origin) return;
+  const { revint_pending_deletions: pending } = await chrome.storage.local.get('revint_pending_deletions');
+  if (!Array.isArray(pending) || pending.length === 0) return;
+
+  const remaining = [];
+  for (const entry of pending) {
+    try {
+      await deleteItem(entry.itemId);
+    } catch {
+      if (Date.now() - entry.ts < 7 * 86400000) remaining.push(entry);
+    }
+  }
+  await chrome.storage.local.set({ revint_pending_deletions: remaining });
+}
+
 const PERIODIC_ALARMS = [
   ['revint:autoReply', 5],
   ['revint:dailyStatsSync', 360],
   ['revint:snapshot', 240],
+  ['revint:pendingDeletions', 60],
 ];
 
 function ensurePeriodicAlarms() {
