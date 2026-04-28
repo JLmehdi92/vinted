@@ -33,7 +33,7 @@ const selectStyle = {
   border: '1px solid var(--line)',
   borderRadius: 'var(--r-sm)',
   background: 'var(--ext-surface)',
-  color: 'var(--ink-3)',
+  color: 'var(--ext-fg-3)',
   cursor: 'pointer',
 };
 
@@ -269,7 +269,7 @@ export default function SmartOffers() {
               onChange={(e) => updateConfig({ acceptPercent: parseInt(e.target.value) })}
               style={{ width: '100%', accentColor: 'var(--gold)' }}
             />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ink-4)', marginTop: 2 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ext-fg-4)', marginTop: 2 }}>
               <span>5%</span>
               <span>50%</span>
             </div>
@@ -301,7 +301,7 @@ export default function SmartOffers() {
               onChange={(e) => updateConfig({ counterPercent: parseInt(e.target.value) })}
               style={{ width: '100%', accentColor: 'var(--gold)' }}
             />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ink-4)', marginTop: 2 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--ext-fg-4)', marginTop: 2 }}>
               <span>5%</span>
               <span>30%</span>
             </div>
@@ -385,7 +385,7 @@ export default function SmartOffers() {
                 <div
                   style={{
                     fontSize: 9,
-                    color: 'var(--ink-4)',
+                    color: 'var(--ext-fg-4)',
                     fontFamily: 'var(--mono)',
                     letterSpacing: '0.05em',
                     textTransform: 'uppercase',
@@ -526,7 +526,7 @@ export default function SmartOffers() {
               padding: 16,
               textAlign: 'center',
               fontSize: 11,
-              color: 'var(--ink-4)',
+              color: 'var(--ext-fg-4)',
               fontFamily: 'var(--mono)',
               letterSpacing: '0.05em',
             }}
@@ -558,7 +558,7 @@ export default function SmartOffers() {
               <div style={{ flex: 1 }}>
                 <span style={{ fontWeight: 500 }}>{log.article || '—'}</span>
                 {log.user && (
-                  <span style={{ color: 'var(--ink-4)', marginLeft: 4 }}>
+                  <span style={{ color: 'var(--ext-fg-4)', marginLeft: 4 }}>
                     de @{log.user}
                   </span>
                 )}
@@ -577,7 +577,7 @@ export default function SmartOffers() {
                 style={{
                   fontFamily: 'var(--mono)',
                   fontSize: 9,
-                  color: 'var(--ink-4)',
+                  color: 'var(--ext-fg-4)',
                 }}
               >
                 {log.time ? new Date(log.time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -628,7 +628,7 @@ export default function SmartOffers() {
             fontFamily: 'var(--mono)',
             letterSpacing: '0.05em',
             textAlign: 'center',
-            color: 'var(--ink-2)',
+            color: 'var(--ext-fg-2)',
           }}
         >
           EN COURS · VÉRIFICATION TOUTES LES {config.checkInterval} MIN

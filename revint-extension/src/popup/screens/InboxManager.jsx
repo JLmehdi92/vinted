@@ -352,7 +352,7 @@ export default function InboxManager() {
   const handleNoteChange = (convId, value) => {
     setNotes((prev) => {
       const next = { ...prev, [convId]: value };
-      chrome.storage.local.set({ [`revint_inbox_notes_${convId}`]: value });
+      chrome.storage.local.set({ revint_inbox_notes: next });
       return next;
     });
   };

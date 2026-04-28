@@ -14,7 +14,13 @@ export default function AccountSwitcher() {
         if (res?.accounts) {
           setAccounts(res.accounts);
           const active = res.accounts.find((a) => a.active);
-          if (active) setActiveId(active.id);
+          if (active) {
+            setActiveId(active.id);
+          } else {
+            chrome.runtime.sendMessage({ type: 'revint:getState' }).then((st) => {
+              if (st?.userId) setActiveId(st.userId);
+            }).catch(() => {});
+          }
         }
       })
       .catch(() => {});

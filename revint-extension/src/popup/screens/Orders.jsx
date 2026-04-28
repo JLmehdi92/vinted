@@ -169,7 +169,7 @@ export default function Orders({ onBack }) {
         orderType: 'sold',
       });
       if (res?.error) throw new Error(res.error);
-      const newOrders = res?.orders || [];
+      const newOrders = res?.my_orders || res?.orders || [];
       if (isFirst) {
         setOrders(newOrders);
       } else {
@@ -199,8 +199,7 @@ export default function Orders({ onBack }) {
     try {
       await chrome.runtime.sendMessage({
         type: 'revint:getShipmentLabel',
-        orderId: order.id,
-        transactionId: order.transaction_id || order.id,
+        shipmentId: order.shipment_id || order.shipment?.id || order.transaction_id || order.id,
       });
     } catch (e) {
       console.warn('[Orders] getShipmentLabel failed:', e);

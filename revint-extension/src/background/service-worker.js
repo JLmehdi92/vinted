@@ -10,7 +10,7 @@ import {
   getNotifications, sendMessage, getInbox, delay,
   withKeyMutex,
   getConversation, acceptOffer, rejectOffer, sendCounterOffer,
-  sendDiscountOffer, uploadPhotoWithRetry, transformImageIterative,
+  sendDiscountOffer,
   loadAccounts, getAccounts, saveAccount, removeAccount, switchAccount,
   getNotificationsV2, toggleFollow, getFollowers, getFollowing,
   setItemHidden, markConversationRead, deleteConversation,
@@ -529,6 +529,45 @@ async function handleMessage(msg) {
       return { results };
     }
 
+    // ─── Bulk price / text operations ───────────────────
+    case 'revint:bulkPrice': {
+      const results = [];
+      for (const itemId of msg.itemIds) {
+        try {
+          const { item } = await getItemDetails(itemId);
+          const oldPrice = item?.price_numeric || parseFloat(item?.price) || 0;
+          const newPrice = applyPriceOperation(oldPrice, msg.operation);
+          await updateItem(itemId, { price: newPrice });
+          results.push({ itemId, success: true, oldPrice, newPrice });
+        } catch (e) {
+          results.push({ itemId, success: false, error: e.message });
+        }
+        await delay(2000 + Math.random() * 3000);
+      }
+      return { results };
+    }
+
+    case 'revint:bulkText': {
+      const results = [];
+      for (const itemId of msg.itemIds) {
+        try {
+          const { item } = await getItemDetails(itemId);
+          const field = msg.field || 'title';
+          const oldValue = item?.[field] || '';
+          let newValue = oldValue;
+          if (msg.action === 'replace') newValue = msg.text || '';
+          else if (msg.action === 'prepend') newValue = (msg.text || '') + ' ' + oldValue;
+          else if (msg.action === 'append') newValue = oldValue + ' ' + (msg.text || '');
+          await updateItem(itemId, { [field]: newValue });
+          results.push({ itemId, success: true });
+        } catch (e) {
+          results.push({ itemId, success: false, error: e.message });
+        }
+        await delay(2000 + Math.random() * 3000);
+      }
+      return { results };
+    }
+
     // ─── Conversations management ─────────────────────
     case 'revint:markConversationRead':
       return markConversationRead(msg.conversationId);
@@ -558,7 +597,7 @@ async function handleMessage(msg) {
     // ─── Smart Offers engine ──────────────────────────
     case 'revint:startSmartOffers': {
       await chrome.storage.local.set({
-        revint_smart_offers: { ...msg.settings, enabled: true, startedAt: Date.now() },
+        revint_smart_offers: { ...(msg.config || msg.settings), enabled: true, startedAt: Date.now() },
       });
       chrome.alarms.create('revint:smartOffersTick', { when: Date.now() + 2000 });
       return { started: true };
@@ -573,7 +612,7 @@ async function handleMessage(msg) {
     // ─── Restocker engine ─────────────────────────────
     case 'revint:startRestocker': {
       await chrome.storage.local.set({
-        revint_restocker: { ...msg.settings, enabled: true, processedOrderIds: [], startedAt: Date.now() },
+        revint_restocker: { ...(msg.config || msg.settings), enabled: true, processedOrderIds: [], startedAt: Date.now() },
       });
       chrome.alarms.create('revint:restockerTick', { when: Date.now() + 5000 });
       return { started: true };
@@ -1025,8 +1064,7 @@ function extractName(html) {
 
 // ─── Install / startup ──────────────────────────────
 // ─── Smart Offers engine ───────────────────────────
-// Polls inbox for pending offers, auto-accepts or counter-offers based on settings.
-// Dotb pattern: check offer price vs minimum → accept or counter with steps.
+// One conversation per tick, alarm-chained. Avoids SW timeout on long loops.
 async function processSmartOffersTick() {
   const { revint_smart_offers: config } = await chrome.storage.local.get('revint_smart_offers');
   if (!config?.enabled) return;
@@ -1034,9 +1072,15 @@ async function processSmartOffersTick() {
   const st = getState();
   if (!st.csrf || !st.origin) return;
 
+  let processed = false;
   try {
     const inboxData = await getInbox(1);
     const conversations = inboxData?.conversations || [];
+
+    const { revint_smart_offers_replied: replied } = await chrome.storage.local.get('revint_smart_offers_replied');
+    let repliedArr = replied || [];
+    if (repliedArr.length > 2000) repliedArr = repliedArr.slice(-1000);
+    const repliedSet = new Set(repliedArr);
 
     for (const conv of conversations) {
       if (!conv.transaction?.id || !conv.last_message) continue;
@@ -1044,8 +1088,14 @@ async function processSmartOffersTick() {
       if (lastMsg.entity_type !== 'offer_request_message') continue;
       if (!lastMsg.entity?.price) continue;
 
+      const convKey = `${conv.id}_${lastMsg.id}`;
+      if (repliedSet.has(convKey)) continue;
+
       const userCheck = shouldSkipUser(conv.opposite_user, config);
       if (userCheck.skip) continue;
+
+      const offerAge = (Date.now() / 1000) - (lastMsg.created_at_ts || 0);
+      if (offerAge < 30) continue;
 
       const offerPrice = parseFloat(typeof lastMsg.entity.price === 'string'
         ? lastMsg.entity.price : lastMsg.entity.price.amount);
@@ -1058,21 +1108,11 @@ async function processSmartOffersTick() {
       let minOffer = prices.minimumOfferPrice;
       if (config.enableRounding) minOffer = smartRound(minOffer);
 
-      const { revint_smart_offers_replied: replied } = await chrome.storage.local.get('revint_smart_offers_replied');
-      const repliedSet = new Set(replied || []);
-      const convKey = `${conv.id}_${lastMsg.id}`;
-      if (repliedSet.has(convKey)) continue;
-
-      // Dotb waits at least 30s before responding
-      const offerAge = (Date.now() / 1000) - (lastMsg.created_at_ts || 0);
-      if (offerAge < 30) continue;
-
       if (offerPrice >= minOffer) {
         try {
           await acceptOffer(conv.transaction.id, lastMsg.entity.id);
           if (config.acceptMessage) {
-            const msg = config.acceptMessage.replace(/@username/g, conv.opposite_user?.login || '');
-            await sendMessage(conv.id, msg);
+            await sendMessage(conv.id, config.acceptMessage.replace(/@username/g, conv.opposite_user?.login || ''));
           }
         } catch (e) {
           console.warn('[ReVint] Smart offer accept failed:', e.message);
@@ -1083,8 +1123,7 @@ async function processSmartOffersTick() {
         try {
           await sendCounterOffer(conv.transaction.id, counterPrice);
           if (config.counterMessage) {
-            const msg = config.counterMessage.replace(/@username/g, conv.opposite_user?.login || '');
-            await sendMessage(conv.id, msg);
+            await sendMessage(conv.id, config.counterMessage.replace(/@username/g, conv.opposite_user?.login || ''));
           }
         } catch (e) {
           console.warn('[ReVint] Smart counter-offer failed:', e.message);
@@ -1092,13 +1131,9 @@ async function processSmartOffersTick() {
       }
 
       repliedSet.add(convKey);
-      if (repliedSet.size > 2000) {
-        const arr = [...repliedSet];
-        await chrome.storage.local.set({ revint_smart_offers_replied: arr.slice(-1000) });
-      } else {
-        await chrome.storage.local.set({ revint_smart_offers_replied: [...repliedSet] });
-      }
-      await abortableDelay(DELAYS.smartOffer.min, DELAYS.smartOffer.max);
+      await chrome.storage.local.set({ revint_smart_offers_replied: [...repliedSet] });
+      processed = true;
+      break;
     }
   } catch (e) {
     if (!/NOT_AUTHENTICATED|DATADOME/.test(e.message)) {
@@ -1107,8 +1142,10 @@ async function processSmartOffersTick() {
   }
 
   if (config.enabled) {
-    const delayMs = (config.checkIntervalMin || 3) * 60000;
-    chrome.alarms.create('revint:smartOffersTick', { when: Date.now() + delayMs + Math.random() * 60000 });
+    const nextDelay = processed
+      ? 20000 + Math.random() * 40000
+      : (config.checkIntervalMin || 3) * 60000 + Math.random() * 60000;
+    chrome.alarms.create('revint:smartOffersTick', { when: Date.now() + nextDelay });
   }
 }
 

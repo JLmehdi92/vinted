@@ -17,7 +17,7 @@ const selectStyle = {
   border: '1px solid var(--line)',
   borderRadius: 'var(--r-sm)',
   background: 'var(--ext-surface)',
-  color: 'var(--ink-3)',
+  color: 'var(--ext-fg-3)',
   cursor: 'pointer',
 };
 
@@ -192,7 +192,7 @@ export default function Restocker() {
                 <div
                   style={{
                     fontSize: 9,
-                    color: 'var(--ink-4)',
+                    color: 'var(--ext-fg-4)',
                     fontFamily: 'var(--mono)',
                     letterSpacing: '0.05em',
                     textTransform: 'uppercase',
@@ -294,7 +294,7 @@ export default function Restocker() {
               padding: 16,
               textAlign: 'center',
               fontSize: 11,
-              color: 'var(--ink-4)',
+              color: 'var(--ext-fg-4)',
               fontFamily: 'var(--mono)',
               letterSpacing: '0.05em',
             }}
@@ -332,7 +332,7 @@ export default function Restocker() {
                     style={{
                       fontFamily: 'var(--mono)',
                       fontSize: 10,
-                      color: 'var(--ink-4)',
+                      color: 'var(--ext-fg-4)',
                       marginLeft: 4,
                     }}
                   >
@@ -356,7 +356,7 @@ export default function Restocker() {
                 style={{
                   fontFamily: 'var(--mono)',
                   fontSize: 9,
-                  color: 'var(--ink-4)',
+                  color: 'var(--ext-fg-4)',
                 }}
               >
                 {log.time ? new Date(log.time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -407,7 +407,7 @@ export default function Restocker() {
             fontFamily: 'var(--mono)',
             letterSpacing: '0.05em',
             textAlign: 'center',
-            color: 'var(--ink-2)',
+            color: 'var(--ext-fg-2)',
           }}
         >
           EN COURS · SCAN TOUTES LES {config.checkInterval} MIN

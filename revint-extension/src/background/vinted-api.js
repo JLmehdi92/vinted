@@ -641,20 +641,31 @@ export async function getUserInfo(userId) {
 // ─── Smart Offer pricing engine ─────────────────────
 // Replicates Dotb's 3-tier offer calculation
 
-export function calculateOfferPrices(itemPrice, offerSettings) {
-  const { offerType, simpleSettings, tieredSettings } = offerSettings;
+export function calculateOfferPrices(itemPrice, cfg) {
+  const type = cfg.offerType;
+  const acceptPct = cfg.acceptPercent ?? cfg.simpleSettings?.acceptPercent;
+  const counterPct = cfg.counterPercent ?? cfg.simpleSettings?.counterPercent;
 
-  if (offerType === 'simple' && simpleSettings) {
-    const minOffer = +(itemPrice * (100 - simpleSettings.acceptPercent) / 100).toFixed(2);
-    const counterPrice = +(itemPrice * (100 - simpleSettings.counterPercent) / 100).toFixed(2);
+  if ((type === 'simple' || type === 'Simple') && acceptPct != null) {
+    const minOffer = +(itemPrice * (100 - acceptPct) / 100).toFixed(2);
+    const counterPrice = +(itemPrice * (100 - (counterPct || 0)) / 100).toFixed(2);
     return { minimumOfferPrice: minOffer, counterOfferPrice: counterPrice };
   }
 
-  if (offerType === 'tiered' && tieredSettings?.tiers) {
-    const tier = tieredSettings.tiers.find(t => itemPrice >= t.minAmount && itemPrice <= t.maxAmount);
+  const tiers = cfg.paliers || cfg.tieredSettings?.tiers;
+  if ((type === 'tiered' || type === 'paliers') && Array.isArray(tiers)) {
+    const tier = tiers.find(t =>
+      itemPrice >= (t.minAmount ?? t.min ?? 0) && itemPrice <= (t.maxAmount ?? t.max ?? Infinity)
+    );
     if (!tier) return null;
-    const minOffer = +(itemPrice * (100 - tier.acceptPercent) / 100).toFixed(2);
-    const counterPrice = +(itemPrice * (100 - tier.counterPercent) / 100).toFixed(2);
+    const minOffer = +(itemPrice * (100 - (tier.acceptPercent ?? tier.accept ?? 0)) / 100).toFixed(2);
+    const counterPrice = +(itemPrice * (100 - (tier.counterPercent ?? tier.counter ?? 0)) / 100).toFixed(2);
+    return { minimumOfferPrice: minOffer, counterOfferPrice: counterPrice };
+  }
+
+  if (acceptPct != null) {
+    const minOffer = +(itemPrice * (100 - acceptPct) / 100).toFixed(2);
+    const counterPrice = +(itemPrice * (100 - (counterPct || 0)) / 100).toFixed(2);
     return { minimumOfferPrice: minOffer, counterOfferPrice: counterPrice };
   }
 

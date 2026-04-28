@@ -186,6 +186,9 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
         itemIds: ids,
         delayMin: delay ? 5 : 0,
         delayMax: delay ? 15 : 0,
+        draftMode,
+        priceReduction: priceReduction ? { type: 'percentage_decrease', value: parseInt(priceReductionValue) } : null,
+        titleModifier,
       });
       if (res?.error) throw new Error(res.error);
     } catch (e) {
