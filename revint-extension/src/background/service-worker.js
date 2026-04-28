@@ -99,7 +99,11 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 );
 
 // ─── Message handler for popup / content scripts ────
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) {
+    sendResponse({ error: 'UNAUTHORIZED' });
+    return;
+  }
   handleMessage(msg)
     .then(sendResponse)
     .catch(e => sendResponse({ error: e.message }));
@@ -481,7 +485,7 @@ async function handleMessage(msg) {
         } catch (e) {
           results.push({ userId, success: false, error: e.message });
         }
-        await delay(500 + Math.random() * 1000);
+        await delay(3000 + Math.random() * 5000);
       }
       return { results };
     }
@@ -499,7 +503,7 @@ async function handleMessage(msg) {
         } catch (e) {
           results.push({ itemId, success: false, error: e.message });
         }
-        await delay(300 + Math.random() * 500);
+        await delay(2000 + Math.random() * 3000);
       }
       return { results };
     }
@@ -803,7 +807,9 @@ async function processAutoReplyTick() {
   }
 
   const { revint_replied_ids: existing } = await chrome.storage.local.get('revint_replied_ids');
-  const repliedIds = new Set(existing || []);
+  let repliedArr = existing || [];
+  if (repliedArr.length > 5000) repliedArr = repliedArr.slice(-3000);
+  const repliedIds = new Set(repliedArr);
 
   // Send exactly ONE message this tick — the alarm is re-armed below so the
   // next send happens after the configured random delay. This is what keeps
@@ -836,17 +842,18 @@ async function processAutoReplyTick() {
     }
   }
 
+  const sanitize = (s) => (s || '').replace(/[{}]/g, '');
   let message = config.template || '';
   const name = extractName(next.body);
   message = resolveVariations(message);
   const discountText = config.sendDiscount && config.discountPercent > 0
     ? `-${config.discountPercent}%` : '';
   message = message
-    .replace(/\{\{prenom\}\}/g, name || '')
-    .replace(/\{\{article\}\}/g, itemTitle)
-    .replace(/\{\{prix\}\}/g, itemPrice)
-    .replace(/\{\{marque\}\}/g, itemBrand)
-    .replace(/\{\{reduction\}\}/g, discountText);
+    .replace(/\{\{prenom\}\}/g, sanitize(name))
+    .replace(/\{\{article\}\}/g, sanitize(itemTitle))
+    .replace(/\{\{prix\}\}/g, sanitize(itemPrice))
+    .replace(/\{\{marque\}\}/g, sanitize(itemBrand))
+    .replace(/\{\{reduction\}\}/g, sanitize(discountText));
 
   try {
     await sendMessage(match[1], message);

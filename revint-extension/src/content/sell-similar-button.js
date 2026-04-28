@@ -196,7 +196,7 @@
     const btn = document.getElementById('revint-sell-similar');
     if (!btn || btn.disabled) return;
 
-    const originalContent = btn.innerHTML;
+    const originalChildren = Array.from(btn.childNodes).map(n => n.cloneNode(true));
     btn.textContent = 'Chargement…';
     btn.disabled = true;
     btn.style.opacity = '0.7';
@@ -246,7 +246,8 @@
       btn.style.opacity = '1';
       btn.style.cursor = 'pointer';
       setTimeout(() => {
-        btn.innerHTML = originalContent;
+        btn.textContent = '';
+        originalChildren.forEach(n => btn.appendChild(n));
         btn.style.color = '#FAF7F2';
         btn.style.background = '#1A1D3A';
       }, 3000);

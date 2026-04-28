@@ -288,19 +288,10 @@ export default function InboxManager() {
     }).catch(() => {});
   }, []);
 
-  // Load notes from storage (load all keys matching the prefix)
   useEffect(() => {
-    chrome.storage.local.get(null).then((result) => {
-      const loaded = {};
-      for (const key of Object.keys(result)) {
-        if (key.startsWith('revint_inbox_notes_')) {
-          const convId = key.replace('revint_inbox_notes_', '');
-          loaded[convId] = result[key];
-        }
-      }
-      if (Object.keys(loaded).length > 0) {
-        setNotes(loaded);
-      }
+    chrome.storage.local.get(['revint_inbox_notes', 'revint_inbox_statuses']).then((result) => {
+      if (result.revint_inbox_notes) setNotes(result.revint_inbox_notes);
+      if (result.revint_inbox_statuses) setStatuses(result.revint_inbox_statuses);
     }).catch(() => {});
   }, []);
 

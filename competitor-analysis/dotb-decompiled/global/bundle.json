@@ -1,0 +1,222 @@
+{
+  "type": "browserify",
+  "entryId": "10",
+  "modules": [
+    {
+      "id": "1",
+      "path": "base64.js"
+    },
+    {
+      "id": "2",
+      "path": "compressedObject.js"
+    },
+    {
+      "id": "3",
+      "path": "compressions.js"
+    },
+    {
+      "id": "4",
+      "path": "crc32.js"
+    },
+    {
+      "id": "5",
+      "path": "defaults.js"
+    },
+    {
+      "id": "6",
+      "path": "external.js"
+    },
+    {
+      "id": "7",
+      "path": "flate.js"
+    },
+    {
+      "id": "8",
+      "path": "ZipFileWorker.js"
+    },
+    {
+      "id": "9",
+      "path": "generate.js"
+    },
+    {
+      "id": "10",
+      "path": "index.js"
+    },
+    {
+      "id": "11",
+      "path": "load.js"
+    },
+    {
+      "id": "12",
+      "path": "nodejs/NodejsStreamInputAdapter.js"
+    },
+    {
+      "id": "13",
+      "path": "nodejs/NodejsStreamOutputAdapter.js"
+    },
+    {
+      "id": "14",
+      "path": "nodejsUtils.js"
+    },
+    {
+      "id": "15",
+      "path": "object.js"
+    },
+    {
+      "id": "16",
+      "path": "node_modules/readable-stream/index.js"
+    },
+    {
+      "id": "17",
+      "path": "reader/ArrayReader.js"
+    },
+    {
+      "id": "18",
+      "path": "reader/DataReader.js"
+    },
+    {
+      "id": "19",
+      "path": "reader/NodeBufferReader.js"
+    },
+    {
+      "id": "20",
+      "path": "reader/StringReader.js"
+    },
+    {
+      "id": "21",
+      "path": "reader/Uint8ArrayReader.js"
+    },
+    {
+      "id": "22",
+      "path": "reader/readerFor.js"
+    },
+    {
+      "id": "23",
+      "path": "signature.js"
+    },
+    {
+      "id": "24",
+      "path": "stream/ConvertWorker.js"
+    },
+    {
+      "id": "25",
+      "path": "stream/Crc32Probe.js"
+    },
+    {
+      "id": "26",
+      "path": "stream/DataLengthProbe.js"
+    },
+    {
+      "id": "27",
+      "path": "stream/DataWorker.js"
+    },
+    {
+      "id": "28",
+      "path": "stream/GenericWorker.js"
+    },
+    {
+      "id": "29",
+      "path": "stream/StreamHelper.js"
+    },
+    {
+      "id": "30",
+      "path": "support.js"
+    },
+    {
+      "id": "31",
+      "path": "utf8.js"
+    },
+    {
+      "id": "32",
+      "path": "utils.js"
+    },
+    {
+      "id": "33",
+      "path": "zipEntries.js"
+    },
+    {
+      "id": "34",
+      "path": "zipEntry.js"
+    },
+    {
+      "id": "35",
+      "path": "zipObject.js"
+    },
+    {
+      "id": "36",
+      "path": "node_modules/immediate/index.js"
+    },
+    {
+      "id": "37",
+      "path": "node_modules/lie/index.js"
+    },
+    {
+      "id": "38",
+      "path": "node_modules/pako/index.js"
+    },
+    {
+      "id": "39",
+      "path": "node_modules/pako/lib/deflate.js"
+    },
+    {
+      "id": "40",
+      "path": "node_modules/pako/lib/inflate.js"
+    },
+    {
+      "id": "41",
+      "path": "node_modules/pako/lib/utils/common.js"
+    },
+    {
+      "id": "42",
+      "path": "node_modules/pako/lib/utils/strings.js"
+    },
+    {
+      "id": "43",
+      "path": "node_modules/pako/lib/zlib/adler32.js"
+    },
+    {
+      "id": "44",
+      "path": "node_modules/pako/lib/zlib/constants.js"
+    },
+    {
+      "id": "45",
+      "path": "node_modules/pako/lib/zlib/crc32.js"
+    },
+    {
+      "id": "46",
+      "path": "node_modules/pako/lib/zlib/deflate.js"
+    },
+    {
+      "id": "47",
+      "path": "node_modules/pako/lib/zlib/gzheader.js"
+    },
+    {
+      "id": "48",
+      "path": "node_modules/pako/lib/zlib/inffast.js"
+    },
+    {
+      "id": "49",
+      "path": "node_modules/pako/lib/zlib/inflate.js"
+    },
+    {
+      "id": "50",
+      "path": "node_modules/pako/lib/zlib/inftrees.js"
+    },
+    {
+      "id": "51",
+      "path": "node_modules/pako/lib/zlib/messages.js"
+    },
+    {
+      "id": "52",
+      "path": "node_modules/pako/lib/zlib/trees.js"
+    },
+    {
+      "id": "53",
+      "path": "node_modules/pako/lib/zlib/zstream.js"
+    },
+    {
+      "id": "54",
+      "path": "node_modules/setimmediate/index.js"
+    }
+  ]
+}

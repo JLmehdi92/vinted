@@ -29,5 +29,10 @@
   };
 
   attachLogoutListener();
-  new MutationObserver(attachLogoutListener).observe(document.body, { childList: true, subtree: true });
+  let scheduled = false;
+  new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    setTimeout(() => { scheduled = false; attachLogoutListener(); }, 500);
+  }).observe(document.body, { childList: true, subtree: true });
 })();

@@ -9,7 +9,6 @@
     "webRequest",
     "cookies",
     "tabs",
-    "notifications",
     "declarativeNetRequest",
     "unlimitedStorage"
   ],
