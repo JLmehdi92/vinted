@@ -264,6 +264,9 @@ async function handleMessage(msg) {
           results: [],
           delayMin: msg.delayMin || 3,
           delayMax: msg.delayMax || 12,
+          draftMode: msg.draftMode || false,
+          priceReduction: msg.priceReduction || null,
+          titleModifier: msg.titleModifier !== false,
           status: 'running',
           startedAt: Date.now(),
         },
@@ -675,6 +678,23 @@ async function processRepostBatchTick() {
   const startTime = Date.now();
   let result;
   try {
+    // Apply title modifier + price reduction if configured
+    if (batch.titleModifier || batch.priceReduction) {
+      try {
+        const { item } = await getItemDetails(itemId);
+        const updates = {};
+        if (batch.titleModifier && item?.title) {
+          updates.title = autoModifyTitle(item.title);
+        }
+        if (batch.priceReduction) {
+          const oldPrice = item?.price_numeric || parseFloat(item?.price) || 0;
+          updates.price = applyPriceOperation(oldPrice, batch.priceReduction);
+        }
+        if (Object.keys(updates).length > 0) await updateItem(itemId, updates);
+      } catch (e) {
+        console.warn('[ReVint] Pre-repost modifications failed:', e.message);
+      }
+    }
     const r = await repostItem(itemId);
     result = { itemId, success: true, newId: r.item?.id };
     logRepost({
@@ -805,23 +825,19 @@ async function processBulkEditTick() {
 }
 
 // ─── Auto-reply: one message per tick, scheduled via alarm chain ───
+// ─── Auto-reply: Dotb-pattern with v2 notifications, entry_type 20,
+// backlog/live modes, user filtering, per-item/per-user limits ───
 async function processAutoReplyTick() {
   const { revint_auto_reply: config } = await chrome.storage.local.get('revint_auto_reply');
   if (!config?.enabled) return;
 
-  // Don't attempt API calls if we haven't captured a Vinted session yet.
-  // The alarm fires every 5 min from install — hitting the API before the
-  // user navigated on Vinted would just produce NOT_AUTHENTICATED noise.
   const st = getState();
   if (!st.csrf || !st.origin) return;
 
   const { revint_settings: settings } = await chrome.storage.local.get('revint_settings');
   const hour = new Date().getHours();
-  const actStart = settings?.activity_start ?? 9;
-  const actEnd = settings?.activity_end ?? 22;
-  if (hour < actStart || hour >= actEnd) return;
+  if (hour < (settings?.activity_start ?? 9) || hour >= (settings?.activity_end ?? 22)) return;
 
-  // Hour bucket from UTC epoch (DST-free by construction).
   const hourBucket = Math.floor(Date.now() / 3600000);
   const today = new Date().toISOString().slice(0, 10);
   const dailyLimit = config.dailyLimit || settings?.daily_msg_limit || 30;
@@ -829,59 +845,114 @@ async function processAutoReplyTick() {
   const gate = await withKeyMutex('revint_auto_reply_gates', async () => {
     const { revint_msg_hourly: hourly, revint_auto_reply_daily: dailyData } =
       await chrome.storage.local.get(['revint_msg_hourly', 'revint_auto_reply_daily']);
-    const hourlyCount = (hourly?.hour === hourBucket) ? hourly.count : 0;
-    const dailyCount = (dailyData?.date === today) ? dailyData.count : 0;
-    return { hourlyCount, dailyCount };
+    return {
+      hourlyCount: (hourly?.hour === hourBucket) ? hourly.count : 0,
+      dailyCount: (dailyData?.date === today) ? dailyData.count : 0,
+    };
   });
+  if (gate.hourlyCount >= 18 || gate.dailyCount >= dailyLimit) return;
 
-  // Cap outgoing messages per hour — we only count successful sends (below),
-  // so quiet hours don't burn quota on polls that produced no candidates.
-  if (gate.hourlyCount >= 18) return;
-  if (gate.dailyCount >= dailyLimit) return;
-
+  // Dotb pattern: use /web/api/notifications with entry_type 20 for favorites
   let notifications;
   try {
-    const res = await getNotifications(1);
+    const res = await getNotificationsV2(1, 20);
     notifications = res?.notifications || [];
   } catch (e) {
-    // Only record as background error if it's NOT a 404 (empty account) or
-    // NOT_AUTHENTICATED (stale session). These are expected for new accounts
-    // and would just spam the user with false alarms.
-    if (!/VINTED_API_404|NOT_AUTHENTICATED/.test(e.message)) {
-      recordBackgroundError('auto-reply-notifications', e);
+    // Fallback to old API if v2 fails
+    try {
+      const res2 = await getNotifications(1);
+      notifications = res2?.notifications || [];
+    } catch (e2) {
+      if (!/VINTED_API_404|NOT_AUTHENTICATED/.test(e2.message)) {
+        recordBackgroundError('auto-reply-notifications', e2);
+      }
+      return;
     }
-    return;
   }
 
-  const favoriteNotifs = notifications.filter(
-    n => n.link && n.link.includes('?offering_id=')
+  // Dotb: filter by entry_type 20 (favorites), fallback to URL-based detection
+  const favoriteNotifs = notifications.filter(n =>
+    n.entry_type === 20 || (n.link && n.link.includes('?offering_id='))
   );
 
+  // Backlog mode: filter by time range; Live mode: only new notifications
+  const timeRangeHours = {
+    'new_only': 0, '2h': 2, '6h': 6, '12h': 12,
+    '1j': 24, '3j': 72, '7j': 168,
+  };
+  const maxHours = timeRangeHours[config.timeRange] || 0;
   let candidates = favoriteNotifs;
+  if (config.mode === 'backlog' && maxHours > 0) {
+    candidates = candidates.filter(n => {
+      const ts = n.created_at_ts || n.created_at || 0;
+      const ageSec = (Date.now() / 1000) - (typeof ts === 'number' ? ts : new Date(ts).getTime() / 1000);
+      return ageSec <= maxHours * 3600;
+    });
+  }
   if (config.ignoreRecent) {
     candidates = candidates.filter(n => {
-      const ts = n.created_at || n.timestamp || 0;
-      const ageSeconds = (Date.now() / 1000) - (typeof ts === 'number' ? ts : new Date(ts).getTime() / 1000);
-      return ageSeconds > 86400;
+      const ts = n.created_at_ts || n.created_at || 0;
+      const ageSec = (Date.now() / 1000) - (typeof ts === 'number' ? ts : new Date(ts).getTime() / 1000);
+      return ageSec > 86400;
     });
   }
 
-  const { revint_replied_ids: existing } = await chrome.storage.local.get('revint_replied_ids');
+  // Load tracking data
+  const { revint_replied_ids: existing, revint_auto_reply_tracking: tracking } =
+    await chrome.storage.local.get(['revint_replied_ids', 'revint_auto_reply_tracking']);
   let repliedArr = existing || [];
   if (repliedArr.length > 5000) repliedArr = repliedArr.slice(-3000);
   const repliedIds = new Set(repliedArr);
+  const perItemCount = tracking?.perItem || {};
+  const perUserCount = tracking?.perUser || {};
+  const lastUserMsg = tracking?.lastUserMsg || {};
 
-  // Send exactly ONE message this tick — the alarm is re-armed below so the
-  // next send happens after the configured random delay. This is what keeps
-  // us within the MV3 service-worker budget.
-  const next = candidates.find(n =>
-    !(config.noDuplicates !== false && repliedIds.has(n.id))
+  // Dotb: ignored users set
+  const ignoredSet = new Set(
+    (config.ignoredUsers || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
   );
+
+  // Find ONE candidate to process (Dotb: one per tick)
+  let next = null;
+  for (const n of candidates) {
+    if (config.noDuplicates !== false && repliedIds.has(n.id)) continue;
+
+    // Dotb: shouldSkipUser check (rating, blocked, moderator, ignored)
+    const notifier = n.initiator || n.notifier || {};
+    const userCheck = shouldSkipUser(notifier, {
+      ignoredUsers: config.ignoredUsers,
+      skipUsersWithoutRatings: config.skipUsersWithoutRatings,
+      minUserRating: config.minUserRating,
+    });
+    if (userCheck.skip) continue;
+
+    // Per-item limit
+    const offeringMatch = (n.link || '').match(/offering_id=(\d+)/);
+    const nItemId = offeringMatch ? offeringMatch[1] : null;
+    if (config.limitPerItem && nItemId) {
+      if ((perItemCount[nItemId] || 0) >= (config.maxPerItem || 10)) continue;
+    }
+
+    // Per-user limit
+    const userLogin = (notifier.login || '').toLowerCase();
+    if (config.limitPerUser && userLogin) {
+      if ((perUserCount[userLogin] || 0) >= (config.maxPerUser || 3)) continue;
+    }
+
+    // Days before resend to same user
+    if (config.daysBeforeResend && userLogin && lastUserMsg[userLogin]) {
+      const daysSince = (Date.now() - lastUserMsg[userLogin]) / 86400000;
+      if (daysSince < config.daysBeforeResend) continue;
+    }
+
+    next = n;
+    break;
+  }
   if (!next) return;
 
-  const match = next.link.match(/\/inbox\/(\d+)/);
+  const match = (next.link || '').match(/\/inbox\/(\d+)/);
   if (!match) return;
-  const offeringMatch = next.link.match(/offering_id=(\d+)/);
+  const offeringMatch = (next.link || '').match(/offering_id=(\d+)/);
   const itemId = offeringMatch ? offeringMatch[1] : null;
 
   let itemTitle = '', itemPrice = '', itemBrand = '';
@@ -892,20 +963,17 @@ async function processAutoReplyTick() {
       itemPrice = (item?.price_numeric || item?.price || '') + '€';
       itemBrand = item?.brand_title || item?.brand || '';
     } catch (e) {
-      // Abort the whole tick on DataDome / rate limit — the follow-up sendMessage
-      // would fail too, and retrying soon would compound the rate limit.
       if (/DATADOME|RATE_LIMITED/.test(e.message)) {
         recordBackgroundError('auto-reply-item', e);
         return;
       }
-      console.warn('[ReVint] item details fetch failed:', next.id, e.message);
     }
   }
 
   const sanitize = (s) => (s || '').replace(/[{}]/g, '');
-  let message = config.template || '';
-  const name = extractName(next.body);
-  message = resolveVariations(message);
+  const notifier = next.initiator || next.notifier || {};
+  const name = extractName(next.body) || notifier.login?.split('_')[0] || '';
+  let message = resolveVariations(config.template || '');
   const discountText = config.sendDiscount && config.discountPercent > 0
     ? `-${config.discountPercent}%` : '';
   message = message
@@ -913,72 +981,67 @@ async function processAutoReplyTick() {
     .replace(/\{\{article\}\}/g, sanitize(itemTitle))
     .replace(/\{\{prix\}\}/g, sanitize(itemPrice))
     .replace(/\{\{marque\}\}/g, sanitize(itemBrand))
-    .replace(/\{\{reduction\}\}/g, sanitize(discountText));
+    .replace(/\{\{reduction\}\}/g, sanitize(discountText))
+    .replace(/@username/g, sanitize(notifier.login || name));
 
   try {
     await sendMessage(match[1], message);
 
-    // Auto-discount: optionally send a price reduction offer to the buyer
     if (config.sendDiscount && config.discountPercent > 0 && itemId) {
       try {
         const { item: freshItem } = await getItemDetails(parseInt(itemId));
         const originalPrice = freshItem?.price_numeric || parseFloat(freshItem?.price) || 0;
-        if (originalPrice > 0) {
+        if (originalPrice > 0 && (notifier.id || next.subject?.id)) {
           const discountedPrice = +(originalPrice * (1 - config.discountPercent / 100)).toFixed(2);
-          // Extract buyer user ID from notification context if available
-          const buyerIdMatch = next.initiator?.id || next.subject?.id;
-          if (buyerIdMatch) {
-            await sendDiscountOffer(parseInt(itemId), buyerIdMatch, discountedPrice);
-          }
+          await sendDiscountOffer(parseInt(itemId), notifier.id || next.subject.id, discountedPrice);
         }
       } catch (discErr) {
         console.warn('[ReVint] Auto-discount failed (non-blocking):', discErr.message);
       }
     }
 
+    // Update all tracking counters atomically
+    const userLogin = (notifier.login || '').toLowerCase();
     repliedIds.add(next.id);
+    if (itemId) perItemCount[itemId] = (perItemCount[itemId] || 0) + 1;
+    if (userLogin) {
+      perUserCount[userLogin] = (perUserCount[userLogin] || 0) + 1;
+      lastUserMsg[userLogin] = Date.now();
+    }
+
     await withKeyMutex('revint_auto_reply_gates', async () => {
       const { revint_auto_reply_daily: cur, revint_msg_hourly: hourly } =
         await chrome.storage.local.get(['revint_auto_reply_daily', 'revint_msg_hourly']);
-      const curCount = (cur?.date === today) ? cur.count : 0;
-      const curHourly = (hourly?.hour === hourBucket) ? hourly.count : 0;
       await chrome.storage.local.set({
-        revint_auto_reply_daily: { date: today, count: curCount + 1 },
-        revint_msg_hourly: { hour: hourBucket, count: curHourly + 1 },
+        revint_auto_reply_daily: { date: today, count: ((cur?.date === today) ? cur.count : 0) + 1 },
+        revint_msg_hourly: { hour: hourBucket, count: ((hourly?.hour === hourBucket) ? hourly.count : 0) + 1 },
         revint_replied_ids: [...repliedIds],
+        revint_auto_reply_tracking: { perItem: perItemCount, perUser: perUserCount, lastUserMsg },
       });
     });
+
     logAutoMessage({
-      buyerUsername: name || undefined,
-      conversationId: match[1],
-      itemId: itemId || undefined,
-      itemTitle: itemTitle || undefined,
-      messageBody: message,
-      triggerType: 'favorite',
-      status: 'success',
-    }).catch(e => console.warn('[ReVint] logAutoMessage failed:', e));
+      buyerUsername: name || undefined, conversationId: match[1],
+      itemId: itemId || undefined, itemTitle: itemTitle || undefined,
+      messageBody: message, triggerType: 'favorite', status: 'success',
+    }).catch(() => {});
   } catch (msgErr) {
     logAutoMessage({
-      buyerUsername: name || undefined,
-      conversationId: match[1],
-      itemId: itemId || undefined,
-      itemTitle: itemTitle || undefined,
-      messageBody: message,
-      triggerType: 'favorite',
-      status: 'failed',
-      error: msgErr.message,
-    }).catch(e => console.warn('[ReVint] logAutoMessage failed:', e));
+      buyerUsername: name || undefined, conversationId: match[1],
+      itemId: itemId || undefined, messageBody: message,
+      triggerType: 'favorite', status: 'failed', error: msgErr.message,
+    }).catch(() => {});
     if (/DATADOME|RATE_LIMITED/.test(msgErr.message)) {
       recordBackgroundError('auto-reply-send', msgErr);
       return;
     }
   }
 
-  // Re-arm for the next message after a configurable random delay.
   const minDelaySec = (config.delayMin || 1) * 60;
   const maxDelaySec = (config.delayMax || 5) * 60;
-  const nextWhen = Date.now() + (minDelaySec + Math.random() * (maxDelaySec - minDelaySec)) * 1000;
-  chrome.alarms.create('revint:autoReply', { when: nextWhen });
+  chrome.alarms.create('revint:autoReply', {
+    when: Date.now() + (minDelaySec + Math.random() * (maxDelaySec - minDelaySec)) * 1000,
+  });
 }
 
 async function syncDailyStats() {
