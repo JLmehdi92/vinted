@@ -561,10 +561,10 @@ export async function getNotifications(page = 1) {
   }
 }
 
-export async function sendMessage(conversationId, body) {
+export async function sendMessage(conversationId, body, photoTempUuids = null) {
   return messageLimiter(() =>
     api('POST', `/api/v2/conversations/${conversationId}/replies`, {
-      reply: { body, photo_temp_uuids: null },
+      reply: { body, is_personal_data_sharing_check_skipped: false, photo_temp_uuids: photoTempUuids },
     })
   );
 }

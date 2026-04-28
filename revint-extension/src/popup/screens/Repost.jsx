@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import Toggle from '../components/Toggle';
+import PhotoEditor from '../components/PhotoEditor';
 import { IconBoost, IconCal } from '../components/Icons';
 
 const DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
@@ -90,6 +91,7 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
   const [priceReduction, setPriceReduction] = useState(false);
   const [priceReductionValue, setPriceReductionValue] = useState('5');
   const [titleModifier, setTitleModifier] = useState(true);
+  const [editingPhoto, setEditingPhoto] = useState(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
   const [schedDate, setSchedDate] = useState('');
@@ -259,6 +261,29 @@ export default function Repost({ selectedIds, articles, onBack, onDone }) {
               );
             })}
           </div>
+
+          {/* Photo editor overlay */}
+          {editingPhoto && (
+            <PhotoEditor
+              imageUrl={editingPhoto}
+              onSave={(blob) => { setEditingPhoto(null); }}
+              onCancel={() => setEditingPhoto(null)}
+            />
+          )}
+
+          {/* Edit photos button */}
+          {selectedArticles.length > 0 && selectedArticles[0]?.photos?.[0] && (
+            <button
+              className="btn btn-sm"
+              style={{ marginBottom: 12, width: '100%', justifyContent: 'center' }}
+              onClick={() => {
+                const url = selectedArticles[0].photos[0].full_size_url || selectedArticles[0].photos[0].url;
+                if (url) setEditingPhoto(url);
+              }}
+            >
+              Éditer les photos
+            </button>
+          )}
 
           {/* When selector */}
           <label className="label">Quand ?</label>

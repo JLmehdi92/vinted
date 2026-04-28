@@ -22,6 +22,7 @@ import BulkOps from './screens/BulkOps.jsx';
 import Orders from './screens/Orders.jsx';
 import AccountSwitcher from './components/AccountSwitcher.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { initLocale } from './i18n.js';
 import InboxManager from './screens/InboxManager.jsx';
 
 // Maps an internal background-task scope to a human-readable French label.
@@ -84,6 +85,8 @@ export default function App() {
 
   const [screen, setScreen] = useState('init');
   const [tab, setTab] = useState('dashboard');
+
+  useEffect(() => { initLocale(); }, []);
   const [editingArticle, setEditingArticle] = useState(null);
 
   // Set initial screen based on auth state

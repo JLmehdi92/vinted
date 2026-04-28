@@ -1069,7 +1069,12 @@ async function processAutoReplyTick() {
   const sanitize = (s) => (s || '').replace(/[{}]/g, '');
   const notifier = next.initiator || next.notifier || {};
   const name = extractName(next.body) || notifier.login?.split('_')[0] || '';
-  let message = resolveVariations(config.template || '');
+  const countryCode = (notifier.country_code || st.origin?.match(/vinted\.(\w+)/)?.[1] || 'fr').toUpperCase();
+  // Dotb: support up to 3 message templates, rotate based on per-user count
+  const templates = config.templates || [config.template || ''];
+  const userLogin = (notifier.login || '').toLowerCase();
+  const templateIdx = Math.min((perUserCount[userLogin] || 0), templates.length - 1);
+  let message = resolveVariations(templates[templateIdx] || templates[0] || '', countryCode);
   const discountText = config.sendDiscount && config.discountPercent > 0
     ? `-${config.discountPercent}%` : '';
   message = message
@@ -1193,11 +1198,36 @@ async function captureSnapshot() {
   }
 }
 
-function resolveVariations(text) {
-  // Single-braces NOT surrounded by other braces — preserves {{prenom}}/{{article}} etc.
+// Dotb template engine: supports random {a|b|c}, time-based {T10-14:morning|T18-22:evening},
+// and country-based {FR:Bonjour|EN:Hello} variants.
+function resolveVariations(text, countryCode = '') {
+  const hour = new Date().getHours();
   return text.replace(/(?<!\{)\{([^{}]+)\}(?!\})/g, (_match, group) => {
     const options = group.split('|');
-    return options[Math.floor(Math.random() * options.length)];
+
+    // Time-based: {T10-14:Good morning|T18-22:Good evening|default}
+    const timeMatch = options.find(o => {
+      const m = o.match(/^T(\d+)-(\d+):(.+)/);
+      return m && hour >= parseInt(m[1]) && hour < parseInt(m[2]);
+    });
+    if (timeMatch) {
+      return timeMatch.replace(/^T\d+-\d+:/, '');
+    }
+
+    // Country-based: {FR:Bonjour|ES:Hola|default}
+    if (countryCode) {
+      const countryMatch = options.find(o => {
+        const m = o.match(/^([A-Z]{2}):(.+)/);
+        return m && m[1] === countryCode.toUpperCase();
+      });
+      if (countryMatch) {
+        return countryMatch.replace(/^[A-Z]{2}:/, '');
+      }
+    }
+
+    // Fallback: strip any T/country prefix from remaining options, pick random
+    const cleaned = options.map(o => o.replace(/^T\d+-\d+:/, '').replace(/^[A-Z]{2}:/, ''));
+    return cleaned[Math.floor(Math.random() * cleaned.length)];
   });
 }
 
@@ -1250,6 +1280,10 @@ async function processSmartOffersTick() {
       const convKey = `${conv.id}_${lastMsg.id}`;
       if (repliedSet.has(convKey)) continue;
 
+      // Dotb: per-conversation limit (max 2 offers accepted/countered per conversation)
+      const convOfferCount = repliedArr.filter(k => k.startsWith(`${conv.id}_`)).length;
+      if (convOfferCount >= (config.maxOffersPerConversation || 2)) continue;
+
       const userCheck = shouldSkipUser(conv.opposite_user, config);
       if (userCheck.skip) continue;
 
@@ -1283,7 +1317,18 @@ async function processSmartOffersTick() {
           console.warn('[ReVint] Smart offer accept failed:', e.message);
         }
       } else if (config.enableCounter) {
-        let counterPrice = prices.counterOfferPrice;
+        // Dotb multi-step counter splits: each step applies a different %
+        let counterPrice;
+        const splits = config.counterOfferSplits || [];
+        if (splits.length > 0) {
+          const stepIdx = Math.min(convOfferCount, splits.length - 1);
+          const stepPct = splits[stepIdx]?.percentage || splits[stepIdx] || 0;
+          const maxDiscount = itemPrice - minOffer;
+          const stepDiscount = maxDiscount * stepPct / 100;
+          counterPrice = +(itemPrice - stepDiscount).toFixed(2);
+        } else {
+          counterPrice = prices.counterOfferPrice;
+        }
         if (config.enableRounding) counterPrice = smartRound(counterPrice);
         try {
           await sendCounterOffer(conv.transaction.id, counterPrice);
